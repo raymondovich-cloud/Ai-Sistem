@@ -8,7 +8,7 @@ const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
 const db = createClient(url, serviceRole, { auth: { persistSession: false } });
 
-const githubRawBase = "https://raw.githubusercontent.com/raymondovich-cloud/Ai-Sistem/e586c9f4e691bf3f5eeb317ebcec3af38c718b94/";
+const githubRawBase = "https://raw.githubusercontent.com/raymondovich-cloud/Ai-Sistem/dbe2a1b42899cc93e53533d61781bd2f94d95021/";
 
 function isAllowedInstructionPath(path: string) {
   return path.startsWith("docs/") && path.endsWith(".md") && !path.includes("..") &&
