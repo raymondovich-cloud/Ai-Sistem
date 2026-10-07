@@ -1,4 +1,4 @@
-# version 1.3
+# version 1.4
 
 # Ai-Sistem — главные правила проекта
 
@@ -265,9 +265,21 @@ Runtime 1.3 вводит надёжное и контролируемое вып
 
 Runtime 1.3 не добавляет Memory, RAG, автономное выполнение кода или GitHub write access.
 
-## 22. Текущее состояние
+## 22. Runtime 1.4
 
-Версия документа: 1.3
+Runtime 1.4 добавляет Observability & Runtime Evidence:
+- runtime evidence формируется из текущих task_events, agent_runs, task_finalizations и retry-state;
+- компонентные версии фиксируются в runtime_component_versions;
+- runtime evidence отделяет подтверждённое состояние выполнения от code evidence;
+- retryable-задачи автоматически подбираются планировщиком pg_cron;
+- retry dispatch защищён внутренним токеном, который не передаётся AI и не выдаётся Telegram-клиенту;
+- retry dispatcher использует FOR UPDATE SKIP LOCKED и ограничение до 10 задач за тик;
+- runtime trace фиксирует access, update acceptance, routing, expert execution, provider execution и finalization;
+- Runtime 1.4 не добавляет Memory, RAG, vector search, автономное выполнение кода или GitHub write access.
+
+## 23. Текущее состояние
+
+Версия документа: 1.4
 
 Проект: Ai-Sistem
 
