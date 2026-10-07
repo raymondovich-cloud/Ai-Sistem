@@ -125,7 +125,12 @@ Deno.serve(async (req) => {
     const response = await fetch(base + "/responses", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({\n        model,\n        instructions,\n        input,\n        ...(mode === "synthesis" ? { max_output_tokens: 4000 } : { max_output_tokens: 3000 }),\n      }),
+      body: JSON.stringify({
+        model,
+        instructions,
+        input,
+        ...(mode === "synthesis" ? { max_output_tokens: 4000 } : { max_output_tokens: 3000 }),
+      }),
     });
 
     const raw = await response.text();
