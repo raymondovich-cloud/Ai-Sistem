@@ -76,7 +76,11 @@ async function claimFinalization(taskId: string, allowImmediateFailedReclaim = f
 
   if (inserted) return inserted;
 
-  const failedPredicate = allowImmediateFailedReclaim\n    ? "status.eq.failed"\n    : `and(status.eq.failed,failed_at.lt.${leaseCutoff})`;\n\n  const { data: reclaimed } = await db.from("task_finalizations").update({
+  const failedPredicate = allowImmediateFailedReclaim
+    ? "status.eq.failed"
+    : `and(status.eq.failed,failed_at.lt.${leaseCutoff})`;
+
+  const { data: reclaimed } = await db.from("task_finalizations").update({
     status: "claimed",
     claim_token: claimToken,
     claimed_at: new Date().toISOString(),
