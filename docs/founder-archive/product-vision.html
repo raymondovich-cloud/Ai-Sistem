@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- version 1.0 -->
+<!-- version 1.1 -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -205,8 +205,24 @@ footer{padding-top:50px;color:#777;font-size:13px}
   <div class="quote">Цель — не придумать как можно больше продуктов. Цель — научиться находить продукты, которые люди действительно хотят.</div>
 </section>
 
+
 <section>
-  <div class="number">11 · ТЕКУЩИЙ ПРИОРИТЕТ</div>
+  <div class="number">11 · IDEA VAULT / ИНБОКС ИДЕЙ</div>
+  <h2>Придумал → закинул → вернулся → реализовал</h2>
+  <p>Отдельный контур Ai-Sistem для сохранения идей основателя и последующего запуска их в работу без потери исходного контекста.</p>
+  <div class="flow"><span>пользователь</span><i class="arrow">→</i><span>Telegram</span><i class="arrow">→</i><span>Ai-Sistem</span><i class="arrow">→</i><span>Supabase</span><i class="arrow">→</i><span>Idea Vault</span></div>
+  <div class="grid">
+    <article class="card"><h3>Telegram — интерфейс</h3><p>Идею можно быстро отправить в бота. Бот может публиковать её в рабочую Telegram-группу для визуального журнала и обсуждения.</p></article>
+    <article class="card"><h3>Supabase — источник истины</h3><p>Каждая идея получает уникальный ID, сохраняется в отдельном каталоге и имеет статус, категорию, контекст, решения и историю изменений.</p></article>
+    <article class="card"><h3>Coordinator — возврат в работу</h3><p>Команда вроде «Давай реализуем эту штуку» должна находить соответствующую идею, поднимать её контекст и запускать подходящий workflow специализированных агентов.</p></article>
+  </div>
+  <p><strong>Пример:</strong> идея «TTK Scanner» → сохранение → классификация → отложена → команда «Давай реализуем TTK Scanner» → восстановление контекста → анализ → план → реализация.</p>
+  <div class="flow"><span>NEW</span><i class="arrow">→</i><span>ANALYZED</span><i class="arrow">→</i><span>APPROVED</span><i class="arrow">→</i><span>IN DEVELOPMENT</span><i class="arrow">→</i><span>DONE / ARCHIVED</span></div>
+  <p class="small">Telegram-группа — человеко-читаемый журнал и рабочее пространство, а не основная база. Supabase хранит состояние и идентичность идеи. Идея не становится задачей разработки автоматически: сначала фиксация и отбор, затем осознанный запуск.</p>
+</section>
+
+<section>
+  <div class="number">12 · ТЕКУЩИЙ ПРИОРИТЕТ</div>
   <h2>LifeGame — строим сейчас</h2>
   <div class="grid">
     <article class="card"><h3>Сейчас</h3><p>Закончить LifeGame, довести продукт до коммерческого состояния, проверить качество, безопасность и пользовательский сценарий.</p></article>
