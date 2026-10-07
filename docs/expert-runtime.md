@@ -1,10 +1,10 @@
-# version 1.0
+# version 1.1
 
-# Expert Runtime 1.0
+# Expert Runtime 1.1
 
 ## Назначение
 
-Expert Runtime создаёт исполняемые единицы работы для выбранных консультантов.
+Expert Runtime создаёт и запускает исполняемые единицы работы для выбранных консультантов.
 
 Он не является LLM и не генерирует экспертное заключение самостоятельно.
 
@@ -13,9 +13,11 @@ Expert Runtime создаёт исполняемые единицы работы
 1. Coordinator переводит задачу в `consulting`.
 2. Coordinator вызывает `expert-worker`.
 3. Expert Worker получает консультантов из `task_participants`.
-4. Для каждого консультанта создаётся `agent_runs` со статусом `queued`.
+4. Для каждого нового консультанта создаётся `agent_runs` со статусом `queued`.
 5. В `task_events` фиксируется `expert_consultations_queued`.
-6. Следующий слой системы должен забрать queued run, вызвать выбранный AI provider и сохранить структурированный результат.
+6. Expert Worker получает созданные `run_id` и вызывает `ai-provider-worker` для каждого запуска.
+7. В `task_events` фиксируется `expert_consultations_dispatched`.
+8. AI Provider переводит запуск в `running`, выполняет AI-запрос и сохраняет результат в `agent_runs.output`.
 
 ## Контракт agent_runs
 
@@ -27,10 +29,28 @@ Expert Runtime создаёт исполняемые единицы работы
 
 `input` содержит контекст задачи и идентификатор роли агента.
 
-`output` зарезервирован под структурированный результат агента.
+`output` содержит результат AI provider после успешного исполнения.
+
+## Диспетчеризация
+
+Expert Worker не выполняет модель самостоятельно.
+
+Для каждого нового `agent_run` он вызывает:
+
+`POST /functions/v1/ai-provider-worker`
+
+с телом:
+
+`{ "run_id": "<uuid>" }`
+
+Сервисная авторизация выполняется внутренним Supabase service-role credential. Значение credential не хранится в репозитории.
+
+## Идемпотентность
+
+Перед созданием запусков Expert Worker проверяет существующие `agent_runs` для задачи и не создаёт повторный запуск для уже присутствующего агента.
 
 ## Принцип
 
-Expert Worker отвечает только за runtime orchestration.
+Expert Worker отвечает за runtime orchestration и dispatch.
 
-AI provider, prompt policy, модель и формат экспертного ответа должны быть отдельным слоем.
+AI provider, prompt policy, модель и формат экспертного ответа являются отдельным слоем.
