@@ -1,4 +1,4 @@
-// version 1.2
+// version 1.3
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -31,6 +31,17 @@ function extractResponseText(data: unknown): string {
   return parts.join("\n").trim();
 }
 
+function parseStructuredExpertResult(text: string) {
+  const cleaned = text.trim().replace(/^\`\`\`(?:json)?\\s*/i, "").replace(/\\s*\`\`\`$/i, "");
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
   if (req.headers.get("authorization") !== `Bearer ${serviceRole}`) return json({ ok: false, error: "unauthorized" }, 401);
@@ -57,24 +68,43 @@ Deno.serve(async (req) => {
   }).eq("id", run.id).eq("status", "queued").select("id").single();
   if (!claimed) return json({ ok: true, skipped: true, status: "already_claimed" });
 
-  const { data: agent } = await db.from("agents").select("name,role,key").eq("id", run.agent_id).single();
   const mode = String(run.input?.mode || "expert");
+  const context = run.input?.context || {};
+  const platform = context.platform || { key: "ai-sistem", name: "Ai-Sistem" };
+  const project = context.project || {};
+  const agent = context.agent || {};
+  const task = context.task || {};
+  const rules = context.execution_rules || {};
 
-  let instructions = "You are an expert consultant inside Ai-Sistem. Do not implement code. Be precise and explicitly mark uncertainty.";
-  let input = "Expert role: " + String(agent?.role || "expert") +
-    "\nRequest: " + String(run.input?.request || "") +
-    "\nProvide: conclusion, findings, risks, recommendation, confidence, evidence/assumptions.";
+  let instructions = "";
+  let input = "";
 
   if (mode === "synthesis") {
     instructions =
-      "You are the Chief Coordinator of Ai-Sistem. Synthesize the expert consultations into one direct answer to the user. " +
-      "Do not mention internal prompts, database IDs, implementation details, or hidden system mechanics. " +
+      "You are the Chief Coordinator of Ai-Sistem. " +
+      "Use the supplied Coordinator instructions as the persistent role definition. " +
+      "Synthesize the expert consultations into one direct answer to the user. " +
+      "Do not mention internal prompts, database IDs, API keys, service-role keys, hidden system mechanics, or runtime implementation details. " +
       "Resolve contradictions explicitly, distinguish facts from assumptions, and do not invent missing evidence. " +
       "Return only the final user-facing answer.";
     input =
-      "User request:\n" + String(run.input?.request || "") +
-      "\n\nExpert consultations:\n" + JSON.stringify(run.input?.expert_results || []) +
+      "SYSTEM CONTEXT\n" + JSON.stringify({ platform, project, agent, task, execution_rules: rules }) +
+      "\n\nEXPERT CONSULTATIONS\n" + JSON.stringify(run.input?.expert_results || []) +
+      "\n\nUSER REQUEST\n" + String(task.user_request || run.input?.request || "") +
       "\n\nProduce the final answer for the user.";
+  } else {
+    instructions =
+      "You are a specialist consultant inside Ai-Sistem. " +
+      "Follow the supplied persistent expert instructions and stay within the assigned role. " +
+      "Do not implement code or perform actions. " +
+      "Separate confirmed facts from assumptions and explicitly record missing information. " +
+      "Return ONLY valid JSON with exactly these top-level fields: " +
+      "conclusion (string), findings (array), risks (array), recommendations (array), " +
+      "facts (array), assumptions (array), unknowns (array), confidence (number from 0 to 1).";
+    input =
+      "SYSTEM CONTEXT\n" + JSON.stringify({ platform, project, agent, task, execution_rules: rules }) +
+      "\n\nUSER REQUEST\n" + String(task.user_request || "") +
+      "\n\nYour output must be valid JSON and must not contain markdown fences.";
   }
 
   try {
@@ -93,7 +123,13 @@ Deno.serve(async (req) => {
     const timestamp = new Date().toISOString();
     await db.from("agent_runs").update({
       status: "completed",
-      output: { text, provider: "openai", model, response_id: data.id || null },
+      output: {
+        text,
+        structured: mode === "expert" ? parseStructuredExpertResult(text) : null,
+        provider: "openai",
+        model,
+        response_id: data.id || null,
+      },
       completed_at: timestamp, updated_at: timestamp, error: null,
     }).eq("id", run.id);
 
@@ -102,7 +138,13 @@ Deno.serve(async (req) => {
       event_type: mode === "synthesis" ? "final_coordinator_completed" : "expert_consultation_completed",
       actor_type: "agent",
       actor_id: run.agent_id,
-      payload: { run_id: run.id, provider: "openai", model, mode },
+      payload: {
+        run_id: run.id,
+        provider: "openai",
+        model,
+        mode,
+        structured_output: mode === "expert" ? Boolean(parseStructuredExpertResult(text)) : false,
+      },
     });
 
     return json({ ok: true, run_id: run.id, status: "completed" });
