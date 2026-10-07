@@ -1,4 +1,4 @@
-// version 1.5
+// version 1.6
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -32,6 +32,11 @@ async function loadInstruction(path: string) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function isRuntimeTraceRequest(request: string) {
+  const text = request.toLowerCase();
+  return /runtime\s+trace|runtime trace|трассировк|телеметр|системн(?:ый|ые)\s+журнал|реально\s+выполнен|этапы\s+реально/i.test(text);
 }
 
 function parseExpertResult(run: any, agentId: string) {
@@ -172,6 +177,7 @@ Deno.serve(async (req: Request) => {
     .eq("status", "active")
     .order("component_key", { ascending: true });
 
+  const runtimeTraceRequested = isRuntimeTraceRequest(task.request);
   const runtimeEvidence = {
     source: "supabase_runtime",
     task_status: task.status,
@@ -198,6 +204,27 @@ Deno.serve(async (req: Request) => {
     finalization: finalizationState ?? null,
     components: runtimeComponents ?? [],
     evidence_policy: "Runtime evidence is read from current Supabase task state and execution records. Missing fields remain unknown."
+  };
+
+  const runtimeTrace = {
+    mode: "runtime_trace",
+    authoritative: true,
+    source: "supabase_runtime",
+    stages: (runtimeEvents ?? []).map((event) => ({
+      event_type: event.event_type,
+      created_at: event.created_at,
+      runtime: event.payload?.runtime ?? null,
+      status: event.payload?.status ?? null,
+    })),
+    runs: (runtimeRuns ?? []).map((run) => ({
+      agent: runtimeAgentKeys.get(run.agent_id) ?? "unknown",
+      status: run.status,
+      attempt: run.attempt ?? 1,
+      started_at: run.started_at ?? null,
+      completed_at: run.completed_at ?? null,
+    })),
+    finalization: finalizationState ?? null,
+    policy: "For runtime-trace requests, report only confirmed runtime evidence. Do not replace missing runtime records with code documentation or expert assumptions."
   };
 
   const { data: participants, error: participantsError } = await db
@@ -279,9 +306,15 @@ Deno.serve(async (req: Request) => {
             task: {
               id: task.id,
               user_request: task.request,
-              assignment: "Synthesize the specialist consultations into one accurate user-facing answer.",
+              assignment: runtimeTraceRequested
+                ? "Produce a runtime trace of this exact task. Treat runtime_evidence/runtime_trace as the only authoritative source. Report confirmed stages, timestamps, execution status and finalization. If a stage has no evidence, say it is not confirmed. Do not use expert_results or project documentation as proof of execution."
+                : "Synthesize the specialist consultations into one accurate user-facing answer.",
             },
             runtime_evidence: runtimeEvidence,
+            runtime_trace: runtimeTrace,
+            observability: runtimeTraceRequested
+              ? { mode: "runtime_trace", authoritative_source: "supabase_runtime", prohibit_inference: true }
+              : null,
             execution_rules: {
               facts: "Separate confirmed facts from assumptions.",
               assumptions: "Label assumptions explicitly.",
@@ -290,7 +323,7 @@ Deno.serve(async (req: Request) => {
               authority: "Use expert consultations for specialist conclusions.",
             },
           },
-          expert_results: expertResults,
+          expert_results: runtimeTraceRequested ? [] : expertResults,
         },
       })
       .select("id")
