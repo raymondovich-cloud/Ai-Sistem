@@ -103,7 +103,7 @@ Deno.serve(async (req: Request) => {
   if (consultantIds.length === 0) return json({ ok: false, error: "no_consultants" }, 409);
 
   const { data: runs, error: runsError } = await db
-    .from("agent_runs").select("id,agent_id,status,output").eq("task_id", task.id).in("agent_id", consultantIds);
+    .from("agent_runs").select("id,agent_id,status,output,input").eq("task_id", task.id).in("agent_id", consultantIds);
   if (runsError) return json({ ok: false, error: "run_lookup_failed" }, 500);
 
   if ((runs ?? []).some((run) => run.status !== "completed")) {
