@@ -260,7 +260,7 @@ Deno.serve(async (req: Request) => {
     event_type: "expert_consultations_dispatched",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1.7",
+      runtime: "expert_worker_v1.9",
       dispatched_count: dispatchResults.length - failedDispatches.length,
       failed_count: failedDispatches.length,
       results: dispatchResults.map((result) => ({
@@ -345,7 +345,7 @@ Deno.serve(async (req: Request) => {
     event_type: finalization.ok ? "result_aggregation_dispatched" : "result_aggregation_failed",
     actor_type: "coordinator",
     payload: {
-      runtime: "result_aggregator_v1.6",
+      runtime: "result_aggregator_v1.7",
       status: finalization.status,
     },
   });
