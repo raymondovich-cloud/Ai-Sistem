@@ -1,4 +1,4 @@
-// version 1.6
+// version 1.7
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -132,6 +132,7 @@ Deno.serve(async (req: Request) => {
   if (taskError || !task) return json({ ok: false, error: "task_not_found" }, 404);
 
   if (task.status === "completed") return json({ ok: true, skipped: true, status: "completed" });
+  if (!["synthesizing", "retryable"].includes(task.status)) return json({ ok: true, skipped: true, status: task.status });
 
   const finalization = await claimFinalization(task.id);
   if (!finalization) return json({ ok: true, skipped: true, status: "finalization_in_progress" });
@@ -406,7 +407,7 @@ Deno.serve(async (req: Request) => {
     status: "completed",
     completed_at: timestamp,
     updated_at: timestamp,
-  }).eq("id", task.id).in("status", ["consulting", "retryable"]);
+  }).eq("id", task.id).in("status", ["synthesizing", "retryable"]);
 
   await markFinalizationSent(task.id, finalization.claim_token);
 
@@ -416,7 +417,7 @@ Deno.serve(async (req: Request) => {
     actor_type: "coordinator",
     actor_id: coordinator.id,
     payload: {
-      runtime: "result_aggregator_v1.5",
+      runtime: "result_aggregator_v1.7",
       final_run_id: finalRun.id,
       telegram_chat_id: String(chatId),
     },
