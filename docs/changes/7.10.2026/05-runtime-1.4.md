@@ -1,4 +1,4 @@
-# version 1.3
+# version 1.4
 
 # Изменения — 07.10.2026
 
@@ -120,3 +120,24 @@ Exactly-once для внешнего Telegram side effect по-прежнему 
 
 #### Статус
 Recovery & Delivery Evidence реализованы и deployed. Следующий слой — стандартизированный Runtime Trace API и полноценный Telegram E2E с подтверждением delivery evidence.
+
+### Runtime 1.5 — Runtime Trace API
+
+#### Изменено
+- `supabase/functions/runtime-trace/index.ts` → 1.1;
+- `supabase/functions/runtime-trace/deno.json` → 1.0;
+- runtime registry: `runtime-trace` → 1.1 / Edge 2;
+- `docs/agent.md` → 1.9.
+
+#### Реализовано
+- отдельный read-only API для authoritative runtime trace;
+- единый snapshot lifecycle, events, agent runs, retries, finalization/delivery evidence, Telegram updates и runtime component versions;
+- строгая валидация UUID;
+- service-role-only authentication;
+- отсутствие mutation operations.
+
+#### Deployment
+- runtime-trace → Edge v2, runtime 1.1.
+
+#### Статус
+Runtime Trace API реализован и deployed. Следующий шаг — подключение Telegram Admin Bot к API и полный E2E trace/delivery verification.
