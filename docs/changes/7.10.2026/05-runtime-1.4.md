@@ -1,4 +1,4 @@
-# version 1.0
+# version 1.1
 
 # Изменения — 07.10.2026
 
@@ -39,5 +39,26 @@
 ### Ограничение
 Внешняя отправка Telegram по-прежнему не является exactly-once side effect: между Telegram API и фиксацией sent в БД существует crash window.
 
+## Runtime 1.4.x — Runtime Trace Query hardening
+
+### Изменено
+- supabase/functions/coordinator-worker/index.ts → 1.5
+- supabase/functions/result-aggregator/index.ts → 1.6
+- docs/agent.md → 1.5
+
+### Реализовано
+- распознавание observability/runtime-trace запросов;
+- запись observability-флага в routing trace;
+- authoritative runtime-trace context;
+- запрет использовать expert_results и project documentation как доказательство runtime execution для trace-запроса;
+- подтверждение этапов только по task_events, agent_runs, task_finalizations и runtime state;
+- обновлён runtime_component_versions после deployment.
+
+### Проверка
+- coordinator-worker deployed: Edge v16;
+- result-aggregator deployed: Edge v25;
+- runtime component registry синхронизирован;
+- production schema не изменялась.
+
 ### Статус
-Runtime 1.4 implementation + deployment выполнены. Требуется E2E verification и финальный security/performance check.
+Runtime Trace Query hardening реализован и deployed. Требуется финальный Telegram E2E тест именно с observability-запросом.
