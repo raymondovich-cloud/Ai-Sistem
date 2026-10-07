@@ -1,4 +1,4 @@
-// version 1.4
+// version 1.5
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -344,9 +344,14 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: "final_output_missing" }, 502);
   }
 
-  const { data: createdEvent } = await db.from("task_events")
-    .select("payload").eq("task_id", task.id).eq("event_type", "task_created").order("created_at", { ascending: true }).limit(1).single();
-  const chatId = createdEvent?.payload?.telegram_chat_id;
+  const { data: telegramUpdate } = await db
+    .from("telegram_updates")
+    .select("chat_id")
+    .eq("task_id", task.id)
+    .order("received_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const chatId = telegramUpdate?.chat_id;
   if (!chatId) return json({ ok: false, error: "telegram_chat_id_missing" }, 500);
 
   try {
@@ -378,7 +383,7 @@ Deno.serve(async (req: Request) => {
     actor_type: "coordinator",
     actor_id: coordinator.id,
     payload: {
-      runtime: "result_aggregator_v1.3",
+      runtime: "result_aggregator_v1.5",
       final_run_id: finalRun.id,
       telegram_chat_id: String(chatId),
     },
