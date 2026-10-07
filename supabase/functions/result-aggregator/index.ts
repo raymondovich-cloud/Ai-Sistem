@@ -152,10 +152,15 @@ Deno.serve(async (req: Request) => {
   if (consultantIds.length === 0) return json({ ok: false, error: "no_consultants" }, 409);
 
   const { data: runs, error: runsError } = await db
-    .from("agent_runs").select("id,agent_id,status,output,input").eq("task_id", task.id).in("agent_id", consultantIds);
+    .from("agent_runs").select("id,agent_id,status,attempt,output,input").eq("task_id", task.id).in("agent_id", consultantIds);
   if (runsError) return json({ ok: false, error: "run_lookup_failed" }, 500);
 
-  if ((runs ?? []).some((run) => run.status !== "completed")) {
+  const latestExpertRuns = new Map<string, any>();
+  for (const run of runs ?? []) {
+    const current = latestExpertRuns.get(run.agent_id);
+    if (!current || Number(run.attempt || 1) > Number(current.attempt || 1)) latestExpertRuns.set(run.agent_id, run);
+  }
+  if (!consultantIds.every((agentId) => latestExpertRuns.get(agentId)?.status === "completed")) {
     return json({ ok: true, skipped: true, status: "waiting_for_experts" });
   }
 
@@ -170,7 +175,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: "coordinator_instructions_unavailable" }, 502);
   }
 
-  const expertResults = (runs ?? []).map((run) => ({
+  const expertResults = Array.from(latestExpertRuns.values()).map((run) => ({
     agent_id: run.agent_id,
     result: parseExpertResult(run, run.agent_id),
   }));
@@ -304,7 +309,7 @@ Deno.serve(async (req: Request) => {
     status: "completed",
     completed_at: timestamp,
     updated_at: timestamp,
-  }).eq("id", task.id).eq("status", "consulting");
+  }).eq("id", task.id).in("status", ["consulting", "retryable"]);
 
   await markFinalizationSent(task.id, finalization.claim_token);
 
@@ -314,7 +319,7 @@ Deno.serve(async (req: Request) => {
     actor_type: "coordinator",
     actor_id: coordinator.id,
     payload: {
-      runtime: "result_aggregator_v1.2",
+      runtime: "result_aggregator_v1.3",
       final_run_id: finalRun.id,
       telegram_chat_id: String(chatId),
     },
