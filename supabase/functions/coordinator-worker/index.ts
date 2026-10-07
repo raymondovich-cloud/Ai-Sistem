@@ -1,4 +1,4 @@
-// version 1.3
+// version 1.4
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -38,9 +38,20 @@ function classify(request: string) {
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
-  if (req.headers.get("authorization") !== `Bearer ${serviceRoleKey}`) {
-    return json({ ok: false, error: "unauthorized" }, 401);
+  let authorized = req.headers.get("authorization") === `Bearer ${serviceRoleKey}`;
+  if (!authorized) {
+    const internalToken = req.headers.get("x-ai-internal-token");
+    if (internalToken) {
+      const { data: internalAccess } = await supabase
+        .from("runtime_internal_tokens")
+        .select("key")
+        .eq("key", "retry_dispatch")
+        .eq("token", internalToken)
+        .maybeSingle();
+      authorized = Boolean(internalAccess);
+    }
   }
+  if (!authorized) return json({ ok: false, error: "unauthorized" }, 401);
 
   const body = await req.json().catch(() => null);
   const taskId = body?.task_id;
@@ -98,7 +109,15 @@ Deno.serve(async (req: Request) => {
     event_type: "coordination_started",
     actor_type: "coordinator",
     actor_id: coordinator.id,
-    payload: { classification: "keyword_router_v1", context_version: "1.1", selected_agents: agentKeys },
+    payload: { classification: "keyword_router_v1", context_version: "1.4", selected_agents: agentKeys, runtime: "coordinator-worker_v1.4" },
+  });
+
+  await supabase.from("task_events").insert({
+    task_id: task.id,
+    event_type: "routing_completed",
+    actor_type: "coordinator",
+    actor_id: coordinator.id,
+    payload: { runtime: "coordinator-worker_v1.4", selected_agents: agentKeys },
   });
 
   const functionUrl = `${supabaseUrl}/functions/v1/expert-worker`;
