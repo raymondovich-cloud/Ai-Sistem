@@ -1,4 +1,4 @@
-// version 1.5
+// version 1.6
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -190,7 +190,7 @@ Deno.serve(async (req: Request) => {
         attempt,
         status: "queued",
         input: {
-          context_version: "1.2",
+          context_version: "1.4",
           context: {
             platform: { key: "ai-sistem", name: "Ai-Sistem" },
             project: {
@@ -236,7 +236,7 @@ Deno.serve(async (req: Request) => {
     event_type: "expert_consultations_queued",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1.3",
+      runtime: "expert_worker_v1.4",
       consultants: agents.map((agent) => agent.key),
       queued_count: createdRuns.length,
     },
