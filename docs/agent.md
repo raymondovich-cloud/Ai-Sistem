@@ -1,4 +1,4 @@
-# version 1.4
+# version 1.5
 
 # Ai-Sistem — главные правила проекта
 
@@ -277,9 +277,24 @@ Runtime 1.4 добавляет Observability & Runtime Evidence:
 - runtime trace фиксирует access, update acceptance, routing, expert execution, provider execution и finalization;
 - Runtime 1.4 не добавляет Memory, RAG, vector search, автономное выполнение кода или GitHub write access.
 
-## 23. Текущее состояние
+## 23. Runtime Trace Query
 
-Версия документа: 1.4
+Для запросов пользователя о фактическом выполнении текущей задачи используется отдельный observability-режим.
+
+Источник истины для такого ответа:
+- task_events;
+- agent_runs;
+- task_finalizations;
+- retry state;
+- runtime_component_versions.
+
+Expert results и документация проекта не являются доказательством фактического выполнения runtime-этапа.
+
+Если runtime-запись отсутствует, этап должен считаться неподтверждённым, а не восстановленным по архитектурной документации или предположению эксперта.
+
+## 24. Текущее состояние
+
+Версия документа: 1.5
 
 Проект: Ai-Sistem
 
