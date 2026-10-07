@@ -1,206 +1,48 @@
-# version 1.0
+# version 1.1
 
-# Ai-Sistem — модель данных v1
+# Ai-Sistem — модель данных v1.1
 
-## 1. projects
+К базовой модели workflow добавлена сущность `agent_runs`.
 
-Регистр всех продуктов, которыми управляет Ai-Sistem.
+## 15. agent_runs
 
-Основные поля:
-- id
-- name
-- slug
-- description
-- status
-- repository_reference
-- created_at
-- updated_at
-
-## 2. agents
-
-Регистр AI-агентов системы.
+Исполняемый запуск конкретного агента в рамках задачи.
 
 Основные поля:
+
 - id
-- key
-- name
-- role
-- instruction_path
+- task_id
+- agent_id
 - status
-- configuration
+- input
+- output
+- error
 - created_at
-- updated_at
-
-Один агент является Coordinator.
-
-## 3. tasks
-
-Центральная сущность workflow.
-
-Основные поля:
-- id
-- project_id
-- created_by
-- title
-- request
-- status
-- priority
-- primary_agent_id
-- parent_task_id
-- created_at
-- updated_at
+- started_at
 - completed_at
+- updated_at
 
-## 4. task_participants
+Жизненный цикл:
 
-Связывает задачу с участвующими агентами.
+`queued → running → completed`
 
-Основные поля:
-- task_id
-- agent_id
-- participation_type
-- status
-- assigned_at
-- completed_at
+При ошибке:
 
-Типы участия:
-- coordinator
-- primary
-- consultant
-- reviewer
-- observer
+`running → failed`
 
-## 5. task_events
+При отмене:
 
-Хронологический журнал событий задачи.
+`queued/running → cancelled`
 
-Примеры:
-- task_created
-- agent_assigned
-- consultation_requested
-- decision_created
-- implementation_started
-- implementation_completed
-- verification_started
-- verification_completed
-- task_blocked
-- task_completed
+Один `agent_runs` соответствует одной паре `task_id + agent_id`.
 
-## 6. decisions
+## Связь workflow
 
-Структурированные экспертные решения.
+`tasks`
+→ `task_participants`
+→ `agent_runs`
+→ AI Provider
+→ экспертный результат
+→ `decisions` / `task_events`
 
-Основные поля:
-- id
-- task_id
-- agent_id
-- decision_type
-- conclusion
-- rationale
-- confidence
-- evidence
-- created_at
-
-## 7. approvals
-
-Фиксирует согласование решений или реализации.
-
-Основные поля:
-- id
-- task_id
-- decision_id
-- agent_id
-- status
-- comment
-- created_at
-
-## 8. project_memory
-
-Долгоживущая память конкретного проекта.
-
-Примеры:
-- архитектурные решения;
-- утверждённые UX-правила;
-- ограничения;
-- важные факты;
-- технические решения.
-
-Память всегда принадлежит project_id.
-
-## 9. agent_memory
-
-Внутренняя память агента.
-
-Она не должна автоматически становиться общей памятью проекта.
-
-Если знание должно стать проектным фактом, оно переносится через контролируемый workflow.
-
-## 10. documents
-
-Метаданные документов и артефактов, используемых системой.
-
-Сами большие файлы не обязаны храниться в PostgreSQL.
-
-## 11. sources
-
-Источники внешней информации.
-
-Нужны для сохранения происхождения утверждений и результатов исследований.
-
-## 12. integrations
-
-Связи Ai-Sistem с внешними системами.
-
-Примеры:
-- GitHub;
-- LifeGame API;
-- Telegram;
-- другие продукты.
-
-Секреты интеграций в таблице не хранятся в открытом виде.
-
-## 13. permissions
-
-Разрешения Ai-Sistem на действия в конкретном project/integration.
-
-Принцип: least privilege.
-
-## 14. audit_logs
-
-Неизменяемый по смыслу журнал критических действий.
-
-Фиксирует:
-- кто;
-- что;
-- над каким объектом;
-- когда;
-- результат;
-- metadata.
-
-## Связи
-
-project
-  ├── tasks
-  ├── project_memory
-  ├── documents
-  ├── integrations
-  └── permissions
-
-task
-  ├── task_participants
-  ├── task_events
-  ├── decisions
-  └── approvals
-
-agent
-  ├── task_participants
-  ├── decisions
-  └── agent_memory
-
-## Принцип доступа
-
-Нельзя строить авторизацию только на факте authenticated.
-
-Доступ должен определяться ролью и принадлежностью объекта к разрешённому project.
-
-RLS является обязательным защитным слоем для exposed tables.
+Expert Runtime не содержит бизнес-логику конкретного эксперта и не выбирает AI-модель.
