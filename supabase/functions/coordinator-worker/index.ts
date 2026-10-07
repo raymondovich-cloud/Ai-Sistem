@@ -118,7 +118,7 @@ Deno.serve(async (req: Request) => {
       status: exhausted ? "failed" : "retryable",
       retry_count: retryCount,
       failure_class: "retryable",
-      next_retry_at: new Date(Date.now() + 30000).toISOString(),
+      next_retry_at: exhausted ? null : new Date(Date.now() + 30000).toISOString(),
       last_error: "expert_dispatch_failed",
       updated_at: new Date().toISOString(),
     }).eq("id", task.id);
