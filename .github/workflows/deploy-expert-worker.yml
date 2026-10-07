@@ -1,11 +1,13 @@
-# version 1.0
-name: Deploy expert-worker
+# version 1.1
+name: Deploy Ai-Sistem runtime
 
 on:
   workflow_dispatch:
   push:
     paths:
       - "supabase/functions/expert-worker/**"
+      - "supabase/functions/ai-provider-worker/**"
+      - "supabase/functions/result-aggregator/**"
       - ".github/workflows/deploy-expert-worker.yml"
     branches:
       - main
@@ -33,3 +35,9 @@ jobs:
 
       - name: Deploy expert-worker
         run: supabase functions deploy expert-worker --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy ai-provider-worker
+        run: supabase functions deploy ai-provider-worker --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+
+      - name: Deploy result-aggregator
+        run: supabase functions deploy result-aggregator --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
