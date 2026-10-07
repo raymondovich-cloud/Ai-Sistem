@@ -1,4 +1,4 @@
-// version 1.0
+// version 1.1
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -94,6 +94,27 @@ Deno.serve(async (req: Request) => {
     actor_id: coordinator.id,
     payload: { classification: "keyword_router_v1", selected_agents: agentKeys },
   });
+
+  const functionUrl = `${supabaseUrl}/functions/v1/expert-worker`;
+  const dispatchResponse = await fetch(functionUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({ task_id: task.id }),
+  });
+
+  if (!dispatchResponse.ok) {
+    await supabase.from("task_events").insert({
+      task_id: task.id,
+      event_type: "expert_dispatch_failed",
+      actor_type: "coordinator",
+      actor_id: coordinator.id,
+      payload: { status: dispatchResponse.status },
+    });
+    return json({ ok: false, error: "expert_dispatch_failed" }, 502);
+  }
 
   return json({ ok: true, task_id: task.id, status: "consulting", selected_agents: agentKeys });
 });
