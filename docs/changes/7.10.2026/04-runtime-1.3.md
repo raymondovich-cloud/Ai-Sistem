@@ -2,7 +2,7 @@
 
 # Изменения — 07.10.2026
 
-## 05:00 MSK
+## 05:00–05:15 MSK
 
 ### Runtime 1.3 — Reliable & Secure Execution
 
@@ -45,3 +45,21 @@
 ### Статус
 
 Реализация Runtime 1.3 выполнена. Требуется deployment всех изменённых Edge Functions, end-to-end verification и security/performance verification.
+
+
+### Deployment
+
+- telegram-webhook → ACTIVE v10
+- coordinator-worker → ACTIVE v9
+- expert-worker → ACTIVE v17
+- result-aggregator → ACTIVE v14
+- all Runtime 1.3 changed Edge Functions deployed successfully.
+
+### Verification
+
+- Runtime 1.3 schema present in Supabase;
+- Telegram access allowlist contains the authorized owner entry;
+- new retry/finalization columns and execution-attempt column verified;
+- Supabase Security Advisor: only existing INFO-level RLS-without-policy findings; no new critical security finding;
+- Supabase Performance Advisor: INFO-level existing/unindexed-FK/unused-index notices, no blocking finding;
+- end-to-end Telegram test remains required.
