@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
-const githubRawBase = "https://raw.githubusercontent.com/raymondovich-cloud/Ai-Sistem/main/";
+const githubRawBase = "https://raw.githubusercontent.com/raymondovich-cloud/Ai-Sistem/e586c9f4e691bf3f5eeb317ebcec3af38c718b94/";
 
 function isAllowedInstructionPath(path: string) {
   return path.startsWith("docs/") && path.endsWith(".md") && !path.includes("..") &&
@@ -249,7 +249,7 @@ Deno.serve(async (req: Request) => {
     event_type: finalization.ok ? "result_aggregation_dispatched" : "result_aggregation_failed",
     actor_type: "coordinator",
     payload: {
-      runtime: "result_aggregator_v1.0",
+      runtime: "result_aggregator_v1.1",
       status: finalization.status,
     },
   });
