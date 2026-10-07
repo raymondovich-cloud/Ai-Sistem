@@ -1,4 +1,4 @@
-// version 1.0
+// version 1.1
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -12,6 +12,25 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+async function dispatchRun(runId: string) {
+  const response = await fetch(`${supabaseUrl}/functions/v1/ai-provider-worker`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({ run_id: runId }),
+  });
+
+  const raw = await response.text();
+  return {
+    runId,
+    ok: response.ok,
+    status: response.status,
+    body: raw,
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -77,9 +96,17 @@ Deno.serve(async (req: Request) => {
       },
     }));
 
+  let createdRuns: { id: string }[] = [];
   if (runs.length > 0) {
-    const { error: insertError } = await supabase.from("agent_runs").insert(runs);
-    if (insertError) return json({ ok: false, error: "run_creation_failed" }, 500);
+    const { data: insertedRuns, error: insertError } = await supabase
+      .from("agent_runs")
+      .insert(runs)
+      .select("id");
+
+    if (insertError || !insertedRuns) {
+      return json({ ok: false, error: "run_creation_failed" }, 500);
+    }
+    createdRuns = insertedRuns;
   }
 
   await supabase.from("task_events").insert({
@@ -87,17 +114,41 @@ Deno.serve(async (req: Request) => {
     event_type: "expert_consultations_queued",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1",
+      runtime: "expert_worker_v1.1",
       consultants: agents.map((agent) => agent.key),
-      queued_count: runs.length,
+      queued_count: createdRuns.length,
+    },
+  });
+
+  const dispatchResults = await Promise.all(
+    createdRuns.map((run) => dispatchRun(run.id)),
+  );
+
+  const failedDispatches = dispatchResults.filter((result) => !result.ok);
+
+  await supabase.from("task_events").insert({
+    task_id: task.id,
+    event_type: "expert_consultations_dispatched",
+    actor_type: "coordinator",
+    payload: {
+      runtime: "expert_worker_v1.1",
+      dispatched_count: dispatchResults.length - failedDispatches.length,
+      failed_count: failedDispatches.length,
+      results: dispatchResults.map((result) => ({
+        run_id: result.runId,
+        ok: result.ok,
+        status: result.status,
+      })),
     },
   });
 
   return json({
-    ok: true,
+    ok: failedDispatches.length === 0,
     task_id: task.id,
     status: "consulting",
-    queued_runs: runs.length,
+    queued_runs: createdRuns.length,
+    dispatched_runs: dispatchResults.length - failedDispatches.length,
+    failed_dispatches: failedDispatches.length,
     consultants: agents.map((agent) => agent.key),
   });
 });
