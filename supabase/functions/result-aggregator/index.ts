@@ -1,4 +1,4 @@
-// version 1.7
+// version 1.8
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -108,15 +108,35 @@ async function markFinalizationSent(taskId: string, claimToken: string) {
 async function sendTelegram(chatId: string, text: string) {
   if (!botToken) throw new Error("TELEGRAM_BOT_TOKEN is not configured");
   const chunks: string[] = [];
+  const messageIds: number[] = [];
+  const apiResponses: Array<{ ok: boolean; status: number; message_id: number | null }> = [];
+
   for (let i = 0; i < text.length; i += 4000) chunks.push(text.slice(i, i + 4000));
+
   for (const chunk of chunks) {
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text: chunk }),
     });
-    if (!response.ok) throw new Error("telegram_send_failed_" + response.status);
+
+    const body = await response.json().catch(() => null);
+    const messageId = typeof body?.result?.message_id === "number" ? body.result.message_id : null;
+
+    apiResponses.push({
+      ok: response.ok && body?.ok === true,
+      status: response.status,
+      message_id: messageId,
+    });
+
+    if (!response.ok || body?.ok !== true || messageId === null) {
+      throw new Error("telegram_send_failed_" + response.status);
+    }
+
+    messageIds.push(messageId);
   }
+
+  return { messageIds, apiResponses };
 }
 
 Deno.serve(async (req: Request) => {
@@ -388,8 +408,9 @@ Deno.serve(async (req: Request) => {
   const chatId = telegramUpdate?.chat_id;
   if (!chatId) return json({ ok: false, error: "telegram_chat_id_missing" }, 500);
 
+  let delivery;
   try {
-    await sendTelegram(String(chatId), String(completedRun.output.text));
+    delivery = await sendTelegram(String(chatId), String(completedRun.output.text));
   } catch (error) {
     await markFinalizationFailed(task.id, finalization.claim_token);
     await db.from("tasks").update({
@@ -402,14 +423,24 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: "telegram_send_failed" }, 502);
   }
 
-  const timestamp = new Date().toISOString();
-  await db.from("tasks").update({
-    status: "completed",
-    completed_at: timestamp,
-    updated_at: timestamp,
-  }).eq("id", task.id).in("status", ["synthesizing", "retryable"]);
+  const { data: deliveryCommitted, error: deliveryCommitError } = await db.rpc("mark_task_delivered", {
+    p_task_id: task.id,
+    p_claim_token: finalization.claim_token,
+    p_message_ids: delivery.messageIds,
+    p_api_responses: delivery.apiResponses,
+  });
 
-  await markFinalizationSent(task.id, finalization.claim_token);
+  if (deliveryCommitError || deliveryCommitted !== true) {
+    await markFinalizationFailed(task.id, finalization.claim_token);
+    await db.from("tasks").update({
+      status: "retryable",
+      failure_class: "retryable",
+      next_retry_at: new Date(Date.now() + 30000).toISOString(),
+      last_error: "delivery_commit_failed",
+      updated_at: new Date().toISOString(),
+    }).eq("id", task.id).in("status", ["synthesizing", "retryable"]);
+    return json({ ok: false, error: "delivery_commit_failed" }, 502);
+  }
 
   await db.from("task_events").insert({
     task_id: task.id,
@@ -417,9 +448,11 @@ Deno.serve(async (req: Request) => {
     actor_type: "coordinator",
     actor_id: coordinator.id,
     payload: {
-      runtime: "result_aggregator_v1.7",
+      runtime: "result_aggregator_v1.8",
       final_run_id: finalRun.id,
       telegram_chat_id: String(chatId),
+      telegram_message_ids: delivery.messageIds,
+      telegram_api_confirmed: true,
     },
   });
 
