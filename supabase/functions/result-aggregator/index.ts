@@ -1,4 +1,4 @@
-// version 1.8
+// version 1.9
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -62,7 +62,7 @@ function json(body: unknown, status = 200) {
   });
 }
 
-async function claimFinalization(taskId: string) {
+async function claimFinalization(taskId: string, allowImmediateFailedReclaim = false) {
   const leaseCutoff = new Date(Date.now() - 120000).toISOString();
   const claimToken = crypto.randomUUID();
 
@@ -76,7 +76,7 @@ async function claimFinalization(taskId: string) {
 
   if (inserted) return inserted;
 
-  const { data: reclaimed } = await db.from("task_finalizations").update({
+  const failedPredicate = allowImmediateFailedReclaim\n    ? "status.eq.failed"\n    : `and(status.eq.failed,failed_at.lt.${leaseCutoff})`;\n\n  const { data: reclaimed } = await db.from("task_finalizations").update({
     status: "claimed",
     claim_token: claimToken,
     claimed_at: new Date().toISOString(),
@@ -84,7 +84,7 @@ async function claimFinalization(taskId: string) {
     failed_at: null,
     attempt_count: 1,
   }).eq("task_id", taskId)
-    .or(`and(status.eq.failed,failed_at.lt.${leaseCutoff}),and(status.eq.claimed,claimed_at.lt.${leaseCutoff})`)
+    .or(`${failedPredicate},and(status.eq.claimed,claimed_at.lt.${leaseCutoff})`)
     .select("task_id,claim_token")
     .maybeSingle();
 
@@ -154,7 +154,7 @@ Deno.serve(async (req: Request) => {
   if (task.status === "completed") return json({ ok: true, skipped: true, status: "completed" });
   if (!["synthesizing", "retryable"].includes(task.status)) return json({ ok: true, skipped: true, status: task.status });
 
-  const finalization = await claimFinalization(task.id);
+  const finalization = await claimFinalization(task.id, task.status === "synthesizing" || task.status === "retryable");
   if (!finalization) return json({ ok: true, skipped: true, status: "finalization_in_progress" });
 
   const { data: existingFinal } = await db
