@@ -1,21 +1,13 @@
-# version 1.1
+# version 1.2
 
-# AI Provider Runtime 1.1
+# AI Provider Runtime 1.2
 
-AI Provider Runtime выполняет один `agent_run` через подключённый AI-провайдер.
+AI Provider выполняет один `agent_run` через OpenAI Responses API.
 
-Первая реализация использует OpenAI Responses API. Provider изолирован отдельной Edge Function.
+Для обычного экспертного запуска используется режим `expert`. Для финального Coordinator используется режим `synthesis`: Provider получает только результаты завершённых консультантов из доверенной БД и формирует единый пользовательский ответ.
 
-Secrets: `OPENAI_API_KEY`, опционально `OPENAI_MODEL` и `OPENAI_BASE_URL`. Ключ не хранится в GitHub, PostgreSQL или Telegram.
-
-Контракт: `queued → running → completed`; ошибка: `running → failed`.
+Секреты: `OPENAI_API_KEY`, опционально `OPENAI_MODEL` и `OPENAI_BASE_URL`. Секреты не хранятся в GitHub.
 
 Результат сохраняется в `agent_runs.output`, события — в `task_events`.
 
-Coordinator и Expert Worker не знают деталей API модели. Для другого провайдера создаётся отдельный adapter/runtime.
-
-## Исправление 1.1
-
-Извлечение текста из Responses API больше не зависит только от корневого `output_text`. Runtime сначала использует `output_text`, затем безопасно собирает текстовые части из `output[].content[].text`.
-
-Это предотвращает ложный `provider_empty_output` при валидном ответе провайдера с другой формой представления текста.
+Provider не загружает произвольные instruction-файлы из GitHub и не получает внешние URL от пользователя.
