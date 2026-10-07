@@ -1,4 +1,4 @@
-// version 1.4
+// version 1.5
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -14,6 +14,11 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function isRuntimeTraceRequest(request: string) {
+  const text = request.toLowerCase();
+  return /runtime\\s+trace|runtime trace|трассировк|телеметр|системн(?:ый|ые)\\s+журнал|реально\\s+выполнен|этапы\\s+реально/i.test(text);
 }
 
 function classify(request: string) {
@@ -109,7 +114,7 @@ Deno.serve(async (req: Request) => {
     event_type: "coordination_started",
     actor_type: "coordinator",
     actor_id: coordinator.id,
-    payload: { classification: "keyword_router_v1", context_version: "1.4", selected_agents: agentKeys, runtime: "coordinator-worker_v1.4" },
+    payload: { classification: "keyword_router_v1", context_version: "1.4", selected_agents: agentKeys, observability_request: isRuntimeTraceRequest(task.request), runtime: "coordinator-worker_v1.5" },
   });
 
   await supabase.from("task_events").insert({
@@ -117,7 +122,7 @@ Deno.serve(async (req: Request) => {
     event_type: "routing_completed",
     actor_type: "coordinator",
     actor_id: coordinator.id,
-    payload: { runtime: "coordinator-worker_v1.4", selected_agents: agentKeys },
+    payload: { runtime: "coordinator-worker_v1.5", selected_agents: agentKeys, observability_request: isRuntimeTraceRequest(task.request) },
   });
 
   const functionUrl = `${supabaseUrl}/functions/v1/expert-worker`;
