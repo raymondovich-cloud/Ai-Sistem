@@ -1,4 +1,4 @@
-// version 1.7
+// version 1.8
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -326,7 +326,7 @@ Deno.serve(async (req: Request) => {
     event_type: finalization.ok ? "result_aggregation_dispatched" : "result_aggregation_failed",
     actor_type: "coordinator",
     payload: {
-      runtime: "result_aggregator_v1.1",
+      runtime: "result_aggregator_v1.6",
       status: finalization.status,
     },
   });
