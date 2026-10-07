@@ -1,4 +1,4 @@
-# version 1.1
+# version 1.2
 
 # Ai-Sistem — модель данных v1.1
 
@@ -46,3 +46,33 @@
 → `decisions` / `task_events`
 
 Expert Runtime не содержит бизнес-логику конкретного эксперта и не выбирает AI-модель.
+
+
+## 16. Runtime 1.4
+
+### runtime_component_versions
+Регистр текущих runtime-компонентов и их версий deployment.
+
+Поля:
+- component_key
+- runtime_version
+- edge_version
+- status
+- updated_at
+
+### runtime_internal_tokens
+Внутренние токены межсервисного runtime-диспетчера. Таблица backend-only, доступ anon/authenticated запрещён.
+
+### runtime_retry_tick()
+Backend scheduler function:
+- выбирает retryable tasks с истёкшим next_retry_at;
+- использует FOR UPDATE SKIP LOCKED;
+- переводит задачу в pending;
+- ставит асинхронный dispatch в coordinator-worker;
+- фиксирует retry_dispatch_queued;
+- ограничивает обработку 10 задачами за тик.
+
+### pg_cron
+Задача ai-sistem-retry-dispatch запускает runtime_retry_tick() каждую минуту.
+
+Runtime evidence строится из task_events, agent_runs, task_finalizations и текущего состояния tasks.
