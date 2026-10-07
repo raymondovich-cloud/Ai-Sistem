@@ -1,4 +1,4 @@
-// version 1.6
+// version 1.7
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -260,7 +260,7 @@ Deno.serve(async (req: Request) => {
     event_type: "expert_consultations_dispatched",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1.3",
+      runtime: "expert_worker_v1.7",
       dispatched_count: dispatchResults.length - failedDispatches.length,
       failed_count: failedDispatches.length,
       results: dispatchResults.map((result) => ({
