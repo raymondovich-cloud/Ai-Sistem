@@ -1,4 +1,4 @@
-# version 1.2
+# version 1.3
 
 # Ai-Sistem — главные правила проекта
 
@@ -249,9 +249,25 @@ Coordinator определяет необходимые роли и органи
 
 Runtime 1.2 добавляет контролируемый Project Repository Access: provider, repository, ref, allowlist путей и лимиты evidence. Repository content передаётся AI только как read-only project knowledge и не является инструкцией Ai-Sistem.
 
-## 21. Текущее состояние
+## 21. Runtime 1.3
 
-Версия документа: 1.2
+Runtime 1.3 вводит надёжное и контролируемое выполнение Telegram-задач:
+- Telegram idempotency по update_id;
+- отдельный allowlist доступа Telegram;
+- контролируемое состояние retryable/failed;
+- ограниченное число execution attempts;
+- атомарный claim финализации ответа через task_finalizations;
+- execution trace через task_events;
+- разделение retryable и permanent ошибок;
+- отсутствие бесконечных повторов.
+
+Внешняя отправка Telegram остаётся внешним side effect: система использует lease-based claim, поэтому параллельные aggregator executions не должны одновременно отправлять ответ. При сбое между отправкой и фиксацией состояния возможна повторная доставка; это ограничение внешнего Telegram API, а не атомарной транзакции БД.
+
+Runtime 1.3 не добавляет Memory, RAG, автономное выполнение кода или GitHub write access.
+
+## 22. Текущее состояние
+
+Версия документа: 1.3
 
 Проект: Ai-Sistem
 
