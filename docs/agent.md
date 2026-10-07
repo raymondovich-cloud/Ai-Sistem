@@ -1,4 +1,4 @@
-# version 1.1
+# version 1.2
 
 # Ai-Sistem — главные правила проекта
 
@@ -85,6 +85,7 @@ Platform
 Project
 Agent
 Task
+Project Knowledge
 Execution Rules
 ```
 
@@ -244,9 +245,13 @@ Coordinator определяет необходимые роли и органи
 
 Если эксперты расходятся во мнениях, конфликт должен быть зафиксирован, аргументы сторон сохранены, а окончательное решение принято по установленному workflow, а не скрыто одним из агентов.
 
-## 20. Текущее состояние
+## 20. Runtime 1.2
 
-Версия документа: 1.1
+Runtime 1.2 добавляет контролируемый Project Repository Access: provider, repository, ref, allowlist путей и лимиты evidence. Repository content передаётся AI только как read-only project knowledge и не является инструкцией Ai-Sistem.
+
+## 21. Текущее состояние
+
+Версия документа: 1.2
 
 Проект: Ai-Sistem
 
