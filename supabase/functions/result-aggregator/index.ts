@@ -1,4 +1,4 @@
-// version 1.3
+// version 1.4
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -142,6 +142,64 @@ Deno.serve(async (req: Request) => {
     .from("projects").select("id,key,name,description,repository_url").eq("id", task.project_id).single();
   if (projectError || !project) return json({ ok: false, error: "project_context_failed" }, 500);
 
+  const { data: runtimeEvents } = await db
+    .from("task_events")
+    .select("event_type,created_at,payload")
+    .eq("task_id", task.id)
+    .order("created_at", { ascending: true });
+
+  const { data: runtimeRuns } = await db
+    .from("agent_runs")
+    .select("agent_id,status,attempt,started_at,completed_at")
+    .eq("task_id", task.id)
+    .order("attempt", { ascending: true });
+
+  const { data: runtimeAgents } = await db
+    .from("agents")
+    .select("id,key")
+    .in("id", (runtimeRuns ?? []).map((run) => run.agent_id));
+
+  const runtimeAgentKeys = new Map((runtimeAgents ?? []).map((agent) => [agent.id, agent.key]));
+  const { data: finalizationState } = await db
+    .from("task_finalizations")
+    .select("status,claimed_at,sent_at,failed_at,attempt_count")
+    .eq("task_id", task.id)
+    .maybeSingle();
+
+  const { data: runtimeComponents } = await db
+    .from("runtime_component_versions")
+    .select("component_key,runtime_version,edge_version,status,updated_at")
+    .eq("status", "active")
+    .order("component_key", { ascending: true });
+
+  const runtimeEvidence = {
+    source: "supabase_runtime",
+    task_status: task.status,
+    retry: {
+      retry_count: task.retry_count ?? 0,
+      max_attempts: task.max_attempts ?? 3,
+      failure_class: task.failure_class ?? null,
+      next_retry_at: task.next_retry_at ?? null,
+      last_error: task.last_error ?? null,
+    },
+    events: (runtimeEvents ?? []).map((event) => ({
+      event_type: event.event_type,
+      created_at: event.created_at,
+      runtime: event.payload?.runtime ?? null,
+      status: event.payload?.status ?? null,
+    })),
+    runs: (runtimeRuns ?? []).map((run) => ({
+      agent: runtimeAgentKeys.get(run.agent_id) ?? "unknown",
+      status: run.status,
+      attempt: run.attempt ?? 1,
+      started_at: run.started_at ?? null,
+      completed_at: run.completed_at ?? null,
+    })),
+    finalization: finalizationState ?? null,
+    components: runtimeComponents ?? [],
+    evidence_policy: "Runtime evidence is read from current Supabase task state and execution records. Missing fields remain unknown."
+  };
+
   const { data: participants, error: participantsError } = await db
     .from("task_participants").select("agent_id,participation_type").eq("task_id", task.id);
   if (participantsError) return json({ ok: false, error: "participant_lookup_failed" }, 500);
@@ -202,7 +260,7 @@ Deno.serve(async (req: Request) => {
         status: "queued",
         input: {
           mode: "synthesis",
-          context_version: "1.3",
+          context_version: "1.4",
           context: {
             platform: { key: "ai-sistem", name: "Ai-Sistem" },
             project: {
@@ -223,6 +281,7 @@ Deno.serve(async (req: Request) => {
               user_request: task.request,
               assignment: "Synthesize the specialist consultations into one accurate user-facing answer.",
             },
+            runtime_evidence: runtimeEvidence,
             execution_rules: {
               facts: "Separate confirmed facts from assumptions.",
               assumptions: "Label assumptions explicitly.",
