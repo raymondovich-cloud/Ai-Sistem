@@ -1,0 +1,239 @@
+<!doctype html>
+<!-- version 1.1 -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Founder Archive — Product Vision</title>
+<style>
+:root{
+  --bg:#070707;--panel:#111;--panel2:#171717;--text:#f5f5f5;--muted:#a5a5a5;
+  --accent:#ffb000;--line:#292929;--green:#8ee28e;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.55}
+main{max-width:1180px;margin:auto;padding:32px 20px 80px}
+.hero{min-height:82vh;display:flex;flex-direction:column;justify-content:center;padding:40px 0}
+.eyebrow{color:var(--accent);font-size:12px;letter-spacing:.18em;text-transform:uppercase}
+h1{font-size:clamp(46px,9vw,104px);line-height:.92;margin:18px 0 28px;letter-spacing:-.06em}
+h2{font-size:clamp(28px,5vw,52px);line-height:1;margin:0 0 24px;letter-spacing:-.04em}
+h3{font-size:22px;margin:0 0 12px}
+p{color:#ddd;font-size:17px}
+.lead{font-size:clamp(21px,3vw,32px);max-width:850px;color:#eee}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.card{background:linear-gradient(145deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:22px;padding:24px}
+.card strong{color:white}
+.tag{display:inline-block;border:1px solid #444;border-radius:999px;padding:5px 10px;font-size:12px;color:#ccc;margin:3px 3px 3px 0}
+.quote{border-left:3px solid var(--accent);padding:4px 0 4px 22px;margin:28px 0;font-size:24px;font-weight:600}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:20px 0}
+.flow span{background:#141414;border:1px solid #333;border-radius:12px;padding:10px 14px}
+.arrow{color:var(--accent);font-size:22px}
+section{padding:72px 0;border-top:1px solid var(--line)}
+.number{color:var(--accent);font-size:13px;letter-spacing:.15em;margin-bottom:12px}
+.small{color:var(--muted);font-size:14px}
+ol,ul{color:#ddd;padding-left:22px}
+li{margin:8px 0}
+.script{background:#050505;border:1px solid #303030;border-radius:18px;padding:22px;margin:14px 0;font-size:18px}
+.script b{color:white}
+.gold{border-color:#725300}
+.warning{border-color:#4d3c18}
+footer{padding-top:50px;color:#777;font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <div class="eyebrow">Founder Archive · version 1.0</div>
+  <h1>Не один<br>продукт.</h1>
+  <p class="lead">Зафиксированная выжимка стратегических решений, идей и продуктового мышления: LifeGame как первый продукт, будущая экосистема самостоятельных продуктов и принципы, по которым эти продукты будут создаваться.</p>
+  <div class="quote">«3 миллиона — не потолок. Это первая проверка того, что продукт умеет зарабатывать.»</div>
+  <p class="small">Документ предназначен как архив идей. Он не является roadmap разработки и не заменяет техническую документацию проектов.</p>
+</header>
+
+<section>
+  <div class="number">01 · СТРАТЕГИЧЕСКОЕ РЕШЕНИЕ</div>
+  <h2>Мышление портфелем продуктов</h2>
+  <div class="grid">
+    <article class="card"><h3>LifeGame — первый продукт</h3><p>Главная текущая задача — сделать LifeGame сильным, полезным, интуитивным и коммерчески жизнеспособным. Его успех должен стать первым доказательством всей модели.</p></article>
+    <article class="card"><h3>Не ставить потолок</h3><p>Планка 3 млн ₽ — контрольная цель, а не ограничение потенциального масштаба. Следующая цель определяется результатами рынка, а не фантазией о фиксированном максимуме.</p></article>
+    <article class="card"><h3>Следующие продукты</h3><p>После LifeGame могут появляться самостоятельные приложения и SaaS-инструменты. Они не обязаны быть модулями LifeGame или зависеть от него.</p></article>
+  </div>
+  <div class="flow"><span>идея</span><i class="arrow">→</i><span>продукт</span><i class="arrow">→</i><span>первые продажи</span><i class="arrow">→</i><span>доказательство</span><i class="arrow">→</i><span>следующий продукт</span></div>
+</section>
+
+<section>
+  <div class="number">02 · АРХИТЕКТУРА БУДУЩЕЙ ЭКОСИСТЕМЫ</div>
+  <h2>Самостоятельные продукты, добровольная связь</h2>
+  <p>Продукты должны быть полезными сами по себе. Связь между ними добавляет дополнительную ценность, но не должна превращаться в искусственную зависимость.</p>
+  <div class="grid">
+    <article class="card"><h3>Собственный бренд</h3><p>Каждый продукт получает собственное позиционирование, аудиторию и экономику.</p></article>
+    <article class="card"><h3>Опциональная интеграция</h3><p>Пользователь сам решает, связывать ли продукты и какие данные передавать между ними.</p></article>
+    <article class="card"><h3>Экосистемная выгода</h3><p>Пользователь одного продукта потенциально получает скидку или дополнительные условия при покупке другого.</p></article>
+  </div>
+  <div class="quote">Один разработчик → несколько сильных самостоятельных продуктов → единая экосистема → добровольная интеграция → дополнительная ценность.</div>
+</section>
+
+<section>
+  <div class="number">03 · AI DEVELOPMENT SYSTEM</div>
+  <h2>Второй потенциальный продукт</h2>
+  <p>Система, которую сейчас мы используем для разработки, потенциально может стать самостоятельным SaaS-продуктом. Не «мой Telegram-бот», а инструмент для людей, которые хотят создавать собственные цифровые продукты.</p>
+  <div class="card">
+    <h3>Рабочее позиционирование</h3>
+    <div class="quote">«Ты хочешь создать приложение, но не умеешь программировать? Дай системе задачу — она поможет пройти путь от идеи до работающего продукта.»</div>
+    <p class="small">Это концепция для будущей валидации, а не обещание готового продукта или конкретного набора функций.</p>
+  </div>
+</section>
+
+<section>
+  <div class="number">04 · КУХНЯ / RESTAURANT TECH</div>
+  <h2>Микро-продукт из реальной боли</h2>
+  <p>Пример из ранее обсуждавшегося ресторанного направления: не обязательно переделывать весь PizzaSoft. Можно находить отдельные повторяющиеся операции и превращать их в простые самостоятельные продукты.</p>
+  <div class="card">
+    <h3>TTK Scanner</h3>
+    <p><strong>Проблема:</strong> повару нужно пересчитать технологическую карту под другое количество порций.</p>
+    <p><strong>Решение:</strong> открыть камеру, навести на ТТК, указать нужное количество порций — система распознаёт ингредиенты и пересчитывает нормы.</p>
+    <div class="flow"><span>📷 ТТК</span><i class="arrow">→</i><span>20 порций</span><i class="arrow">→</i><span>готовые нормы</span></div>
+    <p>Сильная сторона идеи — простота. Пользователь должен подумать: <strong>«Блять, почему этого раньше не было?»</strong></p>
+  </div>
+  <div class="small">Возможное направление экосистемы кухни: ТТК → калькуляция → себестоимость → склад → закупки → списания → меню → аналитика. Это набор гипотез, а не утверждённый roadmap.</div>
+</section>
+
+<section>
+  <div class="number">05 · PR-КАМПАНИЯ LIFEGAME</div>
+  <h2>Сначала идея. Потом продукт.</h2>
+  <p>Главный принцип кампании: первые материалы не должны выглядеть как обычная реклама приложения. Сначала создаётся вопрос и самоузнавание, затем раскрывается система, затем продукт.</p>
+
+  <div class="script">
+    <h3>001 · «ЗРИТЕЛЬ ИЛИ ИГРОК?»</h3>
+    <p>Главная концепция кампании.</p>
+    <p><b>ЗРИТЕЛЬ / ИЛИ / ИГРОК?</b></p>
+    <p>У человека есть жизнь, но вопрос — управляет ли он ей или просто наблюдает.</p>
+  </div>
+
+  <div class="script">
+    <h3>002 · «ТЫ СМОТРИШЬ»</h3>
+    <p><b>ЗРИТЕЛЬ ИЛИ ИГРОК?</b></p>
+    <p>Ты каждый день смотришь, как проходит твоя жизнь.</p>
+    <p>Понедельник. Вторник. Среда.<br>Работа. Дом. Сон.<br>И снова.</p>
+    <p><b>А когда ты начал играть?</b></p>
+    <p>COMING SOON</p>
+  </div>
+
+  <div class="script">
+    <h3>003 · «ИГРА УЖЕ ИДЁТ»</h3>
+    <p>Ты не регистрировался.<br>Не выбирал правила.<br>Не нажимал «начать».</p>
+    <p><b>Но игра уже идёт.</b></p>
+    <p>Ты зарабатываешь. Ты тратишь. Ты выбираешь. Ты ошибаешься. Ты развиваешься.</p>
+    <p>Каждый день делаешь следующий ход.</p>
+    <p><b>Вопрос только один. Ты управляешь игрой?</b></p>
+    <p>ЗРИТЕЛЬ ИЛИ ИГРОК?</p>
+  </div>
+
+  <div class="script">
+    <h3>004 · «СИСТЕМА»</h3>
+    <p>У тебя есть деньги. Но нет системы.<br>У тебя есть тело. Но нет системы.<br>У тебя есть цели. Но нет системы.</p>
+    <p>Ты пытаешься улучшить отдельные части жизни.<br><b>Но жизнь не состоит из отдельных частей.</b></p>
+    <p><b>FINANCE / HEALTH / DEVELOPMENT</b></p>
+    <p><b>Это одна система.</b></p>
+    <p><b>LIFE GAME</b><br>Посмотри на свою жизнь иначе.</p>
+  </div>
+
+  <div class="quote">«Жизнь всё равно идёт. Вопрос только в том, ты её смотришь или играешь.»</div>
+</section>
+
+<section>
+  <div class="number">06 · PR — PRIVACY / DISCIPLINE</div>
+  <h2>Не просить банковский доступ — осознанный выбор</h2>
+  <p>LifeGame не должен позиционировать отсутствие банковской интеграции как техническое ограничение. Идея — сделать это частью философии приватности и управления.</p>
+  <div class="grid">
+    <article class="card"><h3>Принцип</h3><p>«Мы технически могли бы попросить доступ к банковским данным. Но не хотим.»</p></article>
+    <article class="card"><h3>Игрок управляет</h3><p>Пользователь сам решает, какие данные попадают в его систему.</p></article>
+    <article class="card"><h3>Дисциплина</h3><p>Ручной ввод становится частью игрового цикла: зафиксировал данные → увидел состояние → принял решение → сделал следующий ход.</p></article>
+  </div>
+  <div class="flow"><span>ввод данных</span><i class="arrow">→</i><span>расчёт</span><i class="arrow">→</i><span>понимание</span><i class="arrow">→</i><span>решение</span><i class="arrow">→</i><span>действие</span><i class="arrow">→</i><span>повторная фиксация</span></div>
+  <p class="small">Юридически и коммуникационно важно не обещать «полную безопасность» или «мы не храним ваши данные», если сервис действительно хранит аккаунтные и пользовательские данные. Корректная формулировка — LifeGame не требует банковского доступа для работы.</p>
+</section>
+
+<section>
+  <div class="number">07 · PR — БУДУЩАЯ ЭКОСИСТЕМА</div>
+  <h2>LifeGame — первый продукт, а не конечная точка</h2>
+  <p>Публично не нужно обещать конкретный список будущих приложений. Внутренне принцип зафиксирован: следующие продукты могут быть отдельными сильными продуктами с собственными подписками и необязательной интеграцией с LifeGame.</p>
+  <div class="grid">
+    <article class="card"><h3>Языки</h3><p>Отдельный продукт → собственная подписка → при желании прогресс может попадать в Development.</p></article>
+    <article class="card"><h3>Тренировки</h3><p>Отдельный продукт → собственная ценность → при желании данные могут дополнять Health.</p></article>
+    <article class="card"><h3>Новые инструменты</h3><p>Любая проверенная боль может стать отдельным продуктом, даже если она вообще не относится к LifeGame.</p></article>
+  </div>
+</section>
+
+<section>
+  <div class="number">08 · GOLD</div>
+  <h2>Первые 1 000 игроков</h2>
+  <div class="card gold">
+    <p><span class="tag">WORKING CONCEPT</span></p>
+    <h3>GOLD · Lifetime</h3>
+    <p>Первые 1 000 пользователей получают специальный статус Gold на условиях запуска. Идея должна стимулировать раннюю покупку, а не превращать продукт в бесконечную систему игровых рангов.</p>
+    <p><strong>Рабочая гипотеза цены:</strong> 5 000 ₽ lifetime.</p>
+    <p class="small">Цена и конкретные условия требуют рыночной проверки. 1 000 × 5 000 ₽ = 5 млн ₽ валовой выручки при полном заполнении лимита — это расчёт сценария, а не прогноз продаж.</p>
+  </div>
+</section>
+
+<section>
+  <div class="number">09 · РАБОЧАЯ СИСТЕМА СОЗДАТЕЛЯ</div>
+  <h2>3 + 3 + 1</h2>
+  <div class="grid">
+    <article class="card"><h3>3 дня</h3><p>Основная работа / заработок.</p></article>
+    <article class="card"><h3>3 дня</h3><p>Разработка и развитие текущего продукта: код, архитектура, тестирование, безопасность, коммерческая готовность.</p></article>
+    <article class="card"><h3>1 день</h3><p>«День основателя»: PR, маркетинг, новые продукты, позиционирование, монетизация и стратегические идеи.</p></article>
+  </div>
+  <div class="quote">«3 дня — строим сегодняшний бизнес. 1 день — придумываем завтрашний бизнес.»</div>
+  <p>Ключевое правило: идея не обязана сразу становиться задачей разработки. Сначала она фиксируется, затем проходит отбор.</p>
+</section>
+
+<section>
+  <div class="number">10 · ПРИНЦИП ОТБОРА ИДЕЙ</div>
+  <h2>Не всё хорошее нужно строить</h2>
+  <ol>
+    <li><strong>Проблема:</strong> существует ли реальная регулярная боль?</li>
+    <li><strong>Простота:</strong> можно ли объяснить ценность одним предложением?</li>
+    <li><strong>Частота:</strong> как часто пользователь сталкивается с проблемой?</li>
+    <li><strong>Платёжеспособность:</strong> есть ли причина платить?</li>
+    <li><strong>Распределение:</strong> можем ли мы добраться до аудитории?</li>
+    <li><strong>Защита:</strong> появляется ли со временем бренд, данные, workflow или другой moat?</li>
+    <li><strong>Проверка:</strong> сначала доказательство спроса, потом масштабирование.</li>
+  </ol>
+  <div class="quote">Цель — не придумать как можно больше продуктов. Цель — научиться находить продукты, которые люди действительно хотят.</div>
+</section>
+
+
+<section>
+  <div class="number">11 · IDEA VAULT / ИНБОКС ИДЕЙ</div>
+  <h2>Придумал → закинул → вернулся → реализовал</h2>
+  <p>Отдельный контур Ai-Sistem для сохранения идей основателя и последующего запуска их в работу без потери исходного контекста.</p>
+  <div class="flow"><span>пользователь</span><i class="arrow">→</i><span>Telegram</span><i class="arrow">→</i><span>Ai-Sistem</span><i class="arrow">→</i><span>Supabase</span><i class="arrow">→</i><span>Idea Vault</span></div>
+  <div class="grid">
+    <article class="card"><h3>Telegram — интерфейс</h3><p>Идею можно быстро отправить в бота. Бот может публиковать её в рабочую Telegram-группу для визуального журнала и обсуждения.</p></article>
+    <article class="card"><h3>Supabase — источник истины</h3><p>Каждая идея получает уникальный ID, сохраняется в отдельном каталоге и имеет статус, категорию, контекст, решения и историю изменений.</p></article>
+    <article class="card"><h3>Coordinator — возврат в работу</h3><p>Команда вроде «Давай реализуем эту штуку» должна находить соответствующую идею, поднимать её контекст и запускать подходящий workflow специализированных агентов.</p></article>
+  </div>
+  <p><strong>Пример:</strong> идея «TTK Scanner» → сохранение → классификация → отложена → команда «Давай реализуем TTK Scanner» → восстановление контекста → анализ → план → реализация.</p>
+  <div class="flow"><span>NEW</span><i class="arrow">→</i><span>ANALYZED</span><i class="arrow">→</i><span>APPROVED</span><i class="arrow">→</i><span>IN DEVELOPMENT</span><i class="arrow">→</i><span>DONE / ARCHIVED</span></div>
+  <p class="small">Telegram-группа — человеко-читаемый журнал и рабочее пространство, а не основная база. Supabase хранит состояние и идентичность идеи. Идея не становится задачей разработки автоматически: сначала фиксация и отбор, затем осознанный запуск.</p>
+</section>
+
+<section>
+  <div class="number">12 · ТЕКУЩИЙ ПРИОРИТЕТ</div>
+  <h2>LifeGame — строим сейчас</h2>
+  <div class="grid">
+    <article class="card"><h3>Сейчас</h3><p>Закончить LifeGame, довести продукт до коммерческого состояния, проверить качество, безопасность и пользовательский сценарий.</p></article>
+    <article class="card"><h3>Параллельно</h3><p>Не терять сильные идеи: фиксировать их в архиве, но не позволять им постоянно переключать фокус разработки.</p></article>
+    <article class="card"><h3>Потом</h3><p>После первых реальных результатов выбирать следующий продукт по данным, а не по одному только восторгу от идеи.</p></article>
+  </div>
+</section>
+
+<footer>
+  Founder Archive · Ai-Sistem · Документ создан как рабочая выжимка стратегических решений и идей. Статусы гипотез отмечены отдельно; архив не является обещанием будущего roadmap.
+</footer>
+</main>
+</body>
+</html>
