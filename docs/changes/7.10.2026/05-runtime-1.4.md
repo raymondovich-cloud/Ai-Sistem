@@ -1,4 +1,4 @@
-# version 1.1
+# version 1.2
 
 # Изменения — 07.10.2026
 
@@ -62,3 +62,34 @@
 
 ### Статус
 Runtime Trace Query hardening реализован и deployed. Требуется финальный Telegram E2E тест именно с observability-запросом.
+
+
+## Runtime 1.5 — Task Lifecycle
+
+### Изменено
+- supabase/migrations/20261007071230_runtime_1_5_task_lifecycle.sql → 1.0
+- supabase/functions/expert-worker/index.ts → 1.9
+- supabase/functions/result-aggregator/index.ts → 1.7
+- docs/agent.md → 1.7
+
+### Реализовано
+- добавлено состояние `synthesizing`;
+- введена единая lifecycle-модель: `pending → consulting → synthesizing → completed`;
+- добавлены контролируемые переходы в `retryable`, `failed`, `blocked`, `cancelled`;
+- PostgreSQL trigger блокирует недопустимые переходы состояния;
+- expert-worker переводит задачу в `synthesizing` перед запуском итогового aggregator;
+- result-aggregator принимает только `synthesizing`/контролируемый retry path;
+- runtime component registry синхронизирован с фактическими Edge versions.
+
+### Deployment
+- expert-worker → Edge v30, runtime 1.9;
+- result-aggregator → Edge v29, runtime 1.7.
+
+### Проверка
+- миграция применена: `20261007071230_runtime_1_5_task_lifecycle`;
+- проверены допустимые переходы `pending → consulting → synthesizing → retryable → pending`;
+- проверен отказ недопустимого перехода `synthesizing → pending`;
+- runtime component registry подтверждает актуальные deployment versions.
+
+### Статус
+Runtime 1.5 Task Lifecycle реализован и deployed. Следующий слой — recovery stuck tasks, Delivery Evidence и стандартизированный Runtime Trace API.
