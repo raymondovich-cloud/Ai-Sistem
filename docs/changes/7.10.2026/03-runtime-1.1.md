@@ -1,4 +1,4 @@
-# version 1.0
+# version 1.1
 
 # Изменения — 07.10.2026
 
@@ -27,5 +27,12 @@
 ### Причина
 Устранить Runtime 1.0 ограничение, при котором AI получал только generic role/request и не имел постоянного контекста проекта и инструкции конкретного агента.
 
+### Deployment
+- coordinator-worker → ACTIVE v4
+- expert-worker → ACTIVE v10
+- ai-provider-worker → ACTIVE v7
+- result-aggregator → ACTIVE v6
+- Context instructions pinned to GitHub revision e586c9f4e691bf3f5eeb317ebcec3af38c718b94.
+
 ### Статус
-Согласовано пользователем. Реализация выполнена; требуется deployment и end-to-end verification.
+Согласовано пользователем. Реализация и deployment выполнены. Требуется end-to-end тест через Telegram.
