@@ -1,4 +1,4 @@
-// version 1.6
+// version 1.7
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -129,7 +129,21 @@ Deno.serve(async (req) => {
     });
 
     const raw = await response.text();
-    if (!response.ok) throw new Error("provider_http_" + response.status);
+    if (!response.ok) {
+      let providerCode = null;
+      let providerType = null;
+      let providerMessage = null;
+      try {
+        const errorBody = JSON.parse(raw);
+        providerCode = typeof errorBody?.error?.code === "string" ? errorBody.error.code : null;
+        providerType = typeof errorBody?.error?.type === "string" ? errorBody.error.type : null;
+        providerMessage = typeof errorBody?.error?.message === "string" ? errorBody.error.message.slice(0, 500) : null;
+      } catch {}
+      const retryAfter = response.headers.get("retry-after");
+      const safeReason = response.status === 429 ? (providerCode || providerType || "rate_limit_or_quota") : "provider_http_" + response.status;
+      const detail = ["provider_http_" + response.status, safeReason, providerMessage ? "message=" + providerMessage : null, retryAfter ? "retry_after=" + retryAfter : null].filter(Boolean).join("|");
+      throw new Error(detail);
+    }
     const data = JSON.parse(raw);
     const text = extractResponseText(data);
     if (!text) throw new Error("provider_empty_output");
