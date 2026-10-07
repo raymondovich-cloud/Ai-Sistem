@@ -1,4 +1,4 @@
-// version 1.4
+// version 1.5
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -140,6 +140,7 @@ Deno.serve(async (req) => {
       actor_type: "agent",
       actor_id: run.agent_id,
       payload: {
+        runtime: "ai_provider_worker_v1.4",
         run_id: run.id,
         provider: "openai",
         model,
