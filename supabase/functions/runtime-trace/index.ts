@@ -1,4 +1,4 @@
-// version 1.0
+// version 1.1
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -18,8 +18,8 @@ Deno.serve(async (req: Request) => {
 
   const body = await req.json().catch(() => null);
   const taskId = body?.task_id;
-  if (typeof taskId !== "string" || !taskId) {
-    return json({ ok: false, error: "task_id_required" }, 400);
+  if (typeof taskId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(taskId)) {
+    return json({ ok: false, error: "valid_task_id_required" }, 400);
   }
 
   const headers = { apikey: serviceRole, Authorization: `Bearer ${serviceRole}` };
