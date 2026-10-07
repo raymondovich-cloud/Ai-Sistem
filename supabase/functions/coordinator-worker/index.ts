@@ -47,7 +47,7 @@ Deno.serve(async (req: Request) => {
   if (!taskId) return json({ ok: false, error: "task_id_required" }, 400);
 
   const { data: task, error: taskError } = await supabase
-    .from("tasks").select("id, project_id, request, status").eq("id", taskId).single();
+    .from("tasks").select("id, project_id, request, status, retry_count, max_attempts").eq("id", taskId).single();
   if (taskError || !task) return json({ ok: false, error: "task_not_found" }, 404);
   if (!["pending", "retryable"].includes(task.status)) return json({ ok: true, skipped: true, status: task.status });
 
@@ -112,9 +112,10 @@ Deno.serve(async (req: Request) => {
   });
 
   if (!dispatchResponse.ok) {
-    const retryCount = 1;
+    const retryCount = Number(task.retry_count || 0) + 1;
+    const exhausted = retryCount >= Number(task.max_attempts || 3);
     await supabase.from("tasks").update({
-      status: "retryable",
+      status: exhausted ? "failed" : "retryable",
       retry_count: retryCount,
       failure_class: "retryable",
       next_retry_at: new Date(Date.now() + 30000).toISOString(),
