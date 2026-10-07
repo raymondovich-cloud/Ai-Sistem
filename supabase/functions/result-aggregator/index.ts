@@ -123,7 +123,7 @@ Deno.serve(async (req: Request) => {
   if (!taskId) return json({ ok: false, error: "task_id_required" }, 400);
 
   const { data: task, error: taskError } = await db
-    .from("tasks").select("id,project_id,request,status").eq("id", taskId).single();
+    .from("tasks").select("id,project_id,request,status,retry_count,max_attempts,failure_class,next_retry_at,last_error").eq("id", taskId).single();
   if (taskError || !task) return json({ ok: false, error: "task_not_found" }, 404);
 
   if (task.status === "completed") return json({ ok: true, skipped: true, status: "completed" });
