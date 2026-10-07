@@ -1,4 +1,4 @@
-# version 1.6
+# version 1.7
 
 # Ai-Sistem — главные правила проекта
 
@@ -294,9 +294,32 @@ Expert results и документация проекта не являются 
 
 Runtime evidence и runtime_trace должны явно передаваться в synthesis provider. Для observability-запросов provider не должен считать expert consultation источником runtime truth.
 
-## 24. Текущее состояние
 
-Версия документа: 1.6
+## 24. Runtime 1.5 — Task Lifecycle
+
+Runtime 1.5 вводит единую машину состояний задачи:
+
+```
+pending → consulting → synthesizing → completed
+                    ↘ retryable
+retryable → pending
+```
+
+Дополнительные терминальные состояния: `failed`, `blocked`, `cancelled`.
+
+Правила:
+- `tasks.status` является единственным источником текущего lifecycle state;
+- переходы контролируются на уровне PostgreSQL trigger;
+- `consulting` означает выполнение экспертных консультаций;
+- `synthesizing` означает выполнение итогового synthesis/finalization этапа;
+- `completed` выставляется только после успешной финализации ответа;
+- `retryable` используется для контролируемого восстановления;
+- завершённые состояния нельзя переводить обратно в активные;
+- Runtime 1.5 не добавляет Memory, RAG, автономное выполнение кода или GitHub write access.
+
+## 25. Текущее состояние
+
+Версия документа: 1.7
 
 Проект: Ai-Sistem
 
