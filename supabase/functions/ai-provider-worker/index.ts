@@ -1,4 +1,4 @@
-// version 1.3
+// version 1.4
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -75,6 +75,7 @@ Deno.serve(async (req) => {
   const agent = context.agent || {};
   const task = context.task || {};
   const rules = context.execution_rules || {};
+  const projectKnowledge = context.project_knowledge || {};
 
   let instructions = "";
   let input = "";
@@ -88,7 +89,7 @@ Deno.serve(async (req) => {
       "Resolve contradictions explicitly, distinguish facts from assumptions, and do not invent missing evidence. " +
       "Return only the final user-facing answer.";
     input =
-      "SYSTEM CONTEXT\n" + JSON.stringify({ platform, project, agent, task, execution_rules: rules }) +
+      "SYSTEM CONTEXT\n" + JSON.stringify({ platform, project, agent, task, project_knowledge: projectKnowledge, execution_rules: rules }) +
       "\n\nEXPERT CONSULTATIONS\n" + JSON.stringify(run.input?.expert_results || []) +
       "\n\nUSER REQUEST\n" + String(task.user_request || run.input?.request || "") +
       "\n\nProduce the final answer for the user.";
