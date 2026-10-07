@@ -1,46 +1,22 @@
-# version 1.0
+# version 1.1
 
-# Telegram — Ai-Sistem foundation
+# Telegram — Ai-Sistem
 
-## Назначение
+Telegram является интерфейсом управления Ai-Sistem.
 
-Telegram является первым интерфейсом управления Ai-Sistem.
+## Полный lifecycle
 
-Поток первого этапа:
+Telegram → telegram-webhook → Task → Coordinator → Expert Worker → AI Provider → Result Aggregator → Final Coordinator → Telegram.
 
-Telegram → telegram-webhook → Supabase → Task → Coordinator.
+Webhook принимает входящие сообщения и создаёт Task. Он не содержит бизнес-логику маршрутизации или генерации ответа.
 
-Telegram не содержит бизнес-логику маршрутизации и не обращается напрямую к таблицам системы.
+Result Aggregator отправляет финальный ответ через Telegram Bot API после успешного synthesis Coordinator.
 
-## Webhook
+## Secrets
 
-Реализована Supabase Edge Function:
+`TELEGRAM_WEBHOOK_SECRET` защищает входящий webhook.
+`TELEGRAM_BOT_TOKEN` используется только серверным Result Aggregator и не хранится в GitHub.
 
-- имя: `telegram-webhook`;
-- JWT Supabase отключён, потому что Telegram использует собственную аутентификацию webhook;
-- запрос принимается только при совпадении заголовка `X-Telegram-Bot-Api-Secret-Token` с секретом `TELEGRAM_WEBHOOK_SECRET`;
-- bot token не хранится в Git.
+## Идемпотентность
 
-## Что делает webhook
-
-1. Проверяет HTTP method.
-2. Проверяет наличие webhook secret.
-3. Проверяет Telegram secret header.
-4. Извлекает текст сообщения.
-5. Находит project `ai-sistem`.
-6. Создаёт Task со статусом `pending`.
-7. Назначает Coordinator primary participant.
-8. Создаёт событие `task_created`.
-9. Возвращает `task_id`.
-
-## Что пока не подключено
-
-- Telegram Bot Token;
-- установка Telegram webhook URL;
-- отправка ответов обратно в Telegram;
-- LLM Coordinator;
-- автоматический выбор специализированных экспертов;
-- выполнение задач разработчиком;
-- визуальные identity/avatars агентов.
-
-Это намеренно следующий слой. Foundation не должен смешивать Telegram transport, orchestration и LLM logic в одном компоненте.
+Перед отправкой Result Aggregator проверяет наличие события `final_answer_sent` для задачи.
