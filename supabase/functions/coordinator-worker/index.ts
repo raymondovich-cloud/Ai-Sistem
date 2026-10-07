@@ -1,4 +1,4 @@
-// version 1.1
+// version 1.2
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -92,7 +92,7 @@ Deno.serve(async (req: Request) => {
     event_type: "coordination_started",
     actor_type: "coordinator",
     actor_id: coordinator.id,
-    payload: { classification: "keyword_router_v1", selected_agents: agentKeys },
+    payload: { classification: "keyword_router_v1", context_version: "1.1", selected_agents: agentKeys },
   });
 
   const functionUrl = `${supabaseUrl}/functions/v1/expert-worker`;
