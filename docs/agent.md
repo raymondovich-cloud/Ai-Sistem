@@ -1,4 +1,4 @@
-# version 1.8
+# version 1.9
 
 # Ai-Sistem — главные правила проекта
 
@@ -334,7 +334,22 @@ Delivery Evidence:
 - завершение task и фиксация delivery evidence выполняются одной PostgreSQL-функцией;
 - Telegram остаётся внешним side effect, поэтому абсолютный exactly-once delivery не гарантируется при crash между внешней отправкой и DB commit.
 
-## 26. Текущее состояние
+## 26. Runtime Trace API
+
+`runtime-trace` — read-only внутренний Edge API для получения authoritative runtime snapshot конкретной задачи.
+
+Контракт:
+- POST с `task_id`;
+- доступ только по service-role authorization;
+- только UUID task_id;
+- не изменяет задачи, события, runs или delivery state;
+- источник истины: `tasks`, `task_events`, `agent_runs`, `task_finalizations`, `telegram_updates`, `runtime_component_versions`;
+- возвращает lifecycle, runtime stages, agent runs, retries, Telegram delivery evidence и активные runtime versions;
+- экспертные ответы, документация и code evidence не считаются runtime evidence.
+
+`runtime-trace` не предоставляет публичный пользовательский доступ. Telegram/Admin UI должны обращаться к нему через доверенный backend-контур.
+
+## 27. Текущее состояние
 
 Версия документа: 1.8
 
