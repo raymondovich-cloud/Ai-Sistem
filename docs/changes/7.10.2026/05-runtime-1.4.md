@@ -1,4 +1,4 @@
-# version 1.2
+# version 1.3
 
 # Изменения — 07.10.2026
 
@@ -93,3 +93,30 @@ Runtime Trace Query hardening реализован и deployed. Требуетс
 
 ### Статус
 Runtime 1.5 Task Lifecycle реализован и deployed. Следующий слой — recovery stuck tasks, Delivery Evidence и стандартизированный Runtime Trace API.
+
+### Runtime 1.5 — Recovery & Delivery Evidence
+
+#### Изменено
+- supabase/migrations/20261007071230_runtime_1_5_task_lifecycle.sql → 1.0
+- новая migration: `runtime_1_5_recovery_delivery`;
+- новая migration: `runtime_1_5_delivery_atomic`;
+- supabase/functions/result-aggregator/index.ts → 1.8;
+- docs/agent.md → 1.8.
+
+#### Реализовано
+- recovery зависших `pending`, `consulting`, `synthesizing` задач;
+- отдельный pg_cron job `ai-sistem-runtime-recovery`;
+- ограничение recovery через `max_attempts`;
+- Telegram delivery evidence;
+- сохранение Telegram `message_id`;
+- сохранение подтверждения Telegram API;
+- атомарная DB-фиксация delivery + перехода задачи в `completed`.
+
+#### Deployment
+- result-aggregator → Edge v31, runtime 1.8.
+
+#### Ограничение
+Exactly-once для внешнего Telegram side effect по-прежнему недостижимо при crash между Telegram API и DB commit; система теперь сохраняет фактический delivery evidence, когда DB commit завершён.
+
+#### Статус
+Recovery & Delivery Evidence реализованы и deployed. Следующий слой — стандартизированный Runtime Trace API и полноценный Telegram E2E с подтверждением delivery evidence.
