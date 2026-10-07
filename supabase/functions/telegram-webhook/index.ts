@@ -1,4 +1,4 @@
-// version 1.1
+// version 1.2
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -33,6 +33,36 @@ Deno.serve(async (req: Request) => {
   const text = String(message.text).trim();
   if (!text) return json({ ok: true, ignored: true });
 
+  const telegramUpdateId = Number(update?.update_id);
+  const telegramUserId = String(message.from.id);
+  const telegramChatId = String(message.chat.id);
+
+  if (!Number.isSafeInteger(telegramUpdateId)) {
+    return json({ ok: false, error: "update_id_required" }, 400);
+  }
+
+  const { data: access, error: accessError } = await supabase
+    .from("telegram_access")
+    .select("id, role, status")
+    .eq("telegram_user_id", telegramUserId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (accessError) return json({ ok: false, error: "access_lookup_failed" }, 500);
+  if (!access) {
+    return json({ ok: false, error: "access_denied" }, 403);
+  }
+
+  const { data: existingUpdate } = await supabase
+    .from("telegram_updates")
+    .select("task_id")
+    .eq("telegram_update_id", telegramUpdateId)
+    .maybeSingle();
+
+  if (existingUpdate) {
+    return json({ ok: true, duplicate: true, task_id: existingUpdate.task_id });
+  }
+
   const { data: project, error: projectError } = await supabase
     .from("projects").select("id").eq("key", "ai-sistem").single();
   if (projectError || !project) return json({ ok: false, error: "project_not_found" }, 500);
@@ -49,6 +79,31 @@ Deno.serve(async (req: Request) => {
 
   if (taskError || !task) return json({ ok: false, error: "task_creation_failed" }, 500);
 
+  const { error: updateInsertError } = await supabase
+    .from("telegram_updates")
+    .insert({
+      telegram_update_id: telegramUpdateId,
+      telegram_user_id: telegramUserId,
+      chat_id: telegramChatId,
+      task_id: task.id,
+    });
+
+  if (updateInsertError) {
+    const { data: racedUpdate } = await supabase
+      .from("telegram_updates")
+      .select("task_id")
+      .eq("telegram_update_id", telegramUpdateId)
+      .maybeSingle();
+
+    if (racedUpdate?.task_id) {
+      await supabase.from("tasks").delete().eq("id", task.id);
+      return json({ ok: true, duplicate: true, task_id: racedUpdate.task_id });
+    }
+
+    await supabase.from("tasks").delete().eq("id", task.id);
+    return json({ ok: false, error: "update_registration_failed" }, 500);
+  }
+
   const { error: participantError } = await supabase
     .from("task_participants")
     .insert({ task_id: task.id, agent_id: coordinator.id, participation_type: "primary" });
@@ -61,9 +116,10 @@ Deno.serve(async (req: Request) => {
     task_id: task.id, event_type: "task_created", actor_type: "system",
     payload: {
       channel: "telegram",
-      telegram_update_id: update?.update_id ?? null,
-      telegram_chat_id: String(message.chat.id),
-      telegram_user_id: String(message.from.id),
+      telegram_update_id: telegramUpdateId,
+      telegram_chat_id: telegramChatId,
+      telegram_user_id: telegramUserId,
+      access_role: access.role,
     },
   });
 
