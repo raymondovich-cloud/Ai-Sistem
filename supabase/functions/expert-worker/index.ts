@@ -1,4 +1,4 @@
-// version 1.4
+// version 1.5
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -103,10 +103,10 @@ Deno.serve(async (req: Request) => {
   if (!taskId) return json({ ok: false, error: "task_id_required" }, 400);
 
   const { data: task, error: taskError } = await supabase
-    .from("tasks").select("id, project_id, request, status").eq("id", taskId).single();
+    .from("tasks").select("id, project_id, request, status, retry_count, max_attempts").eq("id", taskId).single();
 
   if (taskError || !task) return json({ ok: false, error: "task_not_found" }, 404);
-  if (task.status !== "consulting") return json({ ok: true, skipped: true, status: task.status });
+  if (!["consulting", "retryable"].includes(task.status)) return json({ ok: true, skipped: true, status: task.status });
 
   const { data: project, error: projectError } = await supabase
     .from("projects").select("id, key, name, description, repository_url").eq("id", task.project_id).single();
@@ -164,17 +164,31 @@ Deno.serve(async (req: Request) => {
   }
 
   const { data: existing, error: existingError } = await supabase
-    .from("agent_runs").select("agent_id, status").eq("task_id", task.id);
+    .from("agent_runs").select("agent_id, status, attempt, input").eq("task_id", task.id);
 
   if (existingError) return json({ ok: false, error: "run_lookup_failed" }, 500);
 
-  const existingIds = new Set((existing ?? []).map((r) => r.agent_id));
+  const latestByAgent = new Map<string, any>();
+  for (const run of existing ?? []) {
+    const current = latestByAgent.get(run.agent_id);
+    if (!current || Number(run.attempt || 1) > Number(current.attempt || 1)) latestByAgent.set(run.agent_id, run);
+  }
+
   const runs = agents
-    .filter((agent) => !existingIds.has(agent.id))
-    .map((agent) => ({
-      task_id: task.id,
-      agent_id: agent.id,
-      status: "queued",
+    .filter((agent) => {
+      const latest = latestByAgent.get(agent.id);
+      if (!latest) return true;
+      if (latest.status === "completed" || latest.status === "running" || latest.status === "queued") return false;
+      return latest.status === "failed" && Number(latest.attempt || 1) < Number(task.max_attempts || 3);
+    })
+    .map((agent) => {
+      const latest = latestByAgent.get(agent.id);
+      const attempt = latest ? Number(latest.attempt || 1) + 1 : 1;
+      return {
+        task_id: task.id,
+        agent_id: agent.id,
+        attempt,
+        status: "queued",
       input: {
         context_version: "1.2",
         context: {
@@ -206,7 +220,8 @@ Deno.serve(async (req: Request) => {
           },
         },
       },
-    }));
+      };
+    });
 
   let createdRuns: { id: string }[] = [];
   if (runs.length > 0) {
@@ -248,10 +263,21 @@ Deno.serve(async (req: Request) => {
   });
 
   if (failedDispatches.length > 0) {
+    const retryCount = Number(task.retry_count || 0) + 1;
+    const exhausted = retryCount >= Number(task.max_attempts || 3);
+    await supabase.from("tasks").update({
+      status: exhausted ? "failed" : "retryable",
+      retry_count: retryCount,
+      failure_class: "retryable",
+      next_retry_at: exhausted ? null : new Date(Date.now() + 30000).toISOString(),
+      last_error: "expert_dispatch_failed",
+      updated_at: new Date().toISOString(),
+    }).eq("id", task.id);
+
     return json({
       ok: false,
       task_id: task.id,
-      status: "consulting",
+      status: exhausted ? "failed" : "retryable",
       queued_runs: createdRuns.length,
       dispatched_runs: dispatchResults.length - failedDispatches.length,
       failed_dispatches: failedDispatches.length,
