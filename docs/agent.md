@@ -1,4 +1,4 @@
-# version 1.7
+# version 1.8
 
 # Ai-Sistem — главные правила проекта
 
@@ -317,9 +317,26 @@ retryable → pending
 - завершённые состояния нельзя переводить обратно в активные;
 - Runtime 1.5 не добавляет Memory, RAG, автономное выполнение кода или GitHub write access.
 
-## 25. Текущее состояние
+## 25. Runtime 1.5 — Recovery & Delivery Evidence
 
-Версия документа: 1.7
+Runtime 1.5 дополнительно обеспечивает восстановление зависших задач и подтверждаемую доставку Telegram-ответа.
+
+Recovery:
+- `pending` старше 2 минут считается зависшим;
+- `consulting` старше 10 минут считается зависшим;
+- `synthesizing` старше 5 минут считается зависшим;
+- зависшая задача переводится в `retryable` с ограничением `max_attempts`;
+- recovery выполняется отдельным pg_cron job.
+
+Delivery Evidence:
+- Telegram `sendMessage` должен вернуть успешный API response и `message_id`;
+- message IDs и подтверждение Telegram API сохраняются в `task_finalizations`;
+- завершение task и фиксация delivery evidence выполняются одной PostgreSQL-функцией;
+- Telegram остаётся внешним side effect, поэтому абсолютный exactly-once delivery не гарантируется при crash между внешней отправкой и DB commit.
+
+## 26. Текущее состояние
+
+Версия документа: 1.8
 
 Проект: Ai-Sistem
 
