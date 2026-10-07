@@ -1,4 +1,4 @@
-// version 1.7
+// version 1.8
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
     const response = await fetch(base + "/responses", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, instructions, input }),
+      body: JSON.stringify({\n        model,\n        instructions,\n        input,\n        ...(mode === "synthesis" ? { max_output_tokens: 4000 } : { max_output_tokens: 3000 }),\n      }),
     });
 
     const raw = await response.text();
@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
       } catch {}
       const retryAfter = response.headers.get("retry-after");
       const safeReason = response.status === 429 ? (providerCode || providerType || "rate_limit_or_quota") : "provider_http_" + response.status;
-      const detail = ["provider_http_" + response.status, safeReason, providerMessage ? "message=" + providerMessage : null, retryAfter ? "retry_after=" + retryAfter : null].filter(Boolean).join("|");
+      const detail = ["provider_http_" + response.status, safeReason, providerMessage ? "message=" + providerMessage : null, retryAfter ? "retry_after=" + retryAfter : null, mode === "synthesis" ? "mode=synthesis" : "mode=expert"].filter(Boolean).join("|");
       throw new Error(detail);
     }
     const data = JSON.parse(raw);
