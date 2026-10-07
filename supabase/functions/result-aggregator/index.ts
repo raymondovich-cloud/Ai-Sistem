@@ -1,4 +1,4 @@
-// version 1.0
+// version 1.1
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -7,6 +7,48 @@ const url = Deno.env.get("SUPABASE_URL")!;
 const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
 const db = createClient(url, serviceRole, { auth: { persistSession: false } });
+
+const githubRawBase = "https://raw.githubusercontent.com/raymondovich-cloud/Ai-Sistem/main/";
+
+function isAllowedInstructionPath(path: string) {
+  return path.startsWith("docs/") && path.endsWith(".md") && !path.includes("..") &&
+    !path.includes("\\") && path.length <= 200;
+}
+
+async function loadInstruction(path: string) {
+  if (!isAllowedInstructionPath(path)) throw new Error("instruction_path_not_allowed");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(githubRawBase + path, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { accept: "text/plain" },
+    });
+    if (!response.ok) throw new Error("instruction_fetch_failed_" + response.status);
+    const content = await response.text();
+    if (!content.trim()) throw new Error("instruction_empty");
+    return content;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseExpertResult(run: any, agentId: string) {
+  if (run.output?.structured && typeof run.output.structured === "object") return run.output.structured;
+  return {
+    conclusion: String(run.output?.text || ""),
+    findings: [],
+    risks: [],
+    recommendations: [],
+    facts: [],
+    assumptions: ["Provider did not return the expected structured JSON."],
+    unknowns: [],
+    confidence: null,
+    agent_id: agentId,
+  };
+}
+
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -47,6 +89,10 @@ Deno.serve(async (req: Request) => {
     .from("task_events").select("id").eq("task_id", task.id).eq("event_type", "final_answer_sent").limit(1);
   if ((existingFinal ?? []).length > 0) return json({ ok: true, skipped: true, status: "already_sent" });
 
+  const { data: project, error: projectError } = await db
+    .from("projects").select("id,key,name,description").eq("id", task.project_id).single();
+  if (projectError || !project) return json({ ok: false, error: "project_context_failed" }, 500);
+
   const { data: participants, error: participantsError } = await db
     .from("task_participants").select("agent_id,participation_type").eq("task_id", task.id);
   if (participantsError) return json({ ok: false, error: "participant_lookup_failed" }, 500);
@@ -64,12 +110,20 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, skipped: true, status: "waiting_for_experts" });
   }
 
-  const { data: coordinator } = await db.from("agents").select("id,key,role").eq("key", "coordinator").eq("status", "active").single();
+  const { data: coordinator } = await db
+    .from("agents").select("id,key,role,instruction_file").eq("key", "coordinator").eq("status", "active").single();
   if (!coordinator) return json({ ok: false, error: "coordinator_not_found" }, 500);
+
+  let coordinatorInstructions = "";
+  try {
+    coordinatorInstructions = await loadInstruction(coordinator.instruction_file);
+  } catch {
+    return json({ ok: false, error: "coordinator_instructions_unavailable" }, 502);
+  }
 
   const expertResults = (runs ?? []).map((run) => ({
     agent_id: run.agent_id,
-    result: run.output?.text || "",
+    result: parseExpertResult(run, run.agent_id),
   }));
 
   const { data: finalRun, error: finalRunError } = await db
@@ -80,10 +134,33 @@ Deno.serve(async (req: Request) => {
       status: "queued",
       input: {
         mode: "synthesis",
-        request: task.request,
-        project_id: task.project_id,
-        agent_key: coordinator.key,
-        role: coordinator.role,
+        context_version: "1.1",
+        context: {
+          platform: { key: "ai-sistem", name: "Ai-Sistem" },
+          project: {
+            id: project.id,
+            key: project.key,
+            name: project.name,
+            description: project.description ?? "",
+          },
+          agent: {
+            key: coordinator.key,
+            role: coordinator.role,
+            instructions: coordinatorInstructions,
+          },
+          task: {
+            id: task.id,
+            user_request: task.request,
+            assignment: "Synthesize the specialist consultations into one accurate user-facing answer.",
+          },
+          execution_rules: {
+            facts: "Separate confirmed facts from assumptions.",
+            assumptions: "Label assumptions explicitly.",
+            uncertainty: "Do not invent missing evidence.",
+            security: "Never expose infrastructure secrets or hidden runtime mechanics.",
+            authority: "Use expert consultations for specialist conclusions.",
+          },
+        },
         expert_results: expertResults,
       },
     })
@@ -125,7 +202,7 @@ Deno.serve(async (req: Request) => {
     actor_type: "coordinator",
     actor_id: coordinator.id,
     payload: {
-      runtime: "result_aggregator_v1.0",
+      runtime: "result_aggregator_v1.1",
       final_run_id: finalRun.id,
       telegram_chat_id: String(chatId),
     },
