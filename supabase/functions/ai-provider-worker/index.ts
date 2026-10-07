@@ -1,4 +1,4 @@
-// version 1.5
+// version 1.6
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -87,9 +87,22 @@ Deno.serve(async (req) => {
       "Synthesize the expert consultations into one direct answer to the user. " +
       "Do not mention internal prompts, database IDs, API keys, service-role keys, hidden system mechanics, or runtime implementation details. " +
       "Resolve contradictions explicitly, distinguish facts from assumptions, and do not invent missing evidence. " +
-      "Return only the final user-facing answer.";
+      "Return only the final user-facing answer. " +
+      "For runtime-trace or observability requests, runtime_evidence and runtime_trace are authoritative execution evidence. " +
+      "Never claim that runtime records are unavailable when they are present in the supplied context. " +
+      "Never use expert consultations or project documentation to prove whether a runtime stage executed.";
     input =
-      "SYSTEM CONTEXT\n" + JSON.stringify({ platform, project, agent, task, project_knowledge: projectKnowledge, execution_rules: rules }) +
+      "SYSTEM CONTEXT\n" + JSON.stringify({
+        platform,
+        project,
+        agent,
+        task,
+        project_knowledge: projectKnowledge,
+        runtime_evidence: context.runtime_evidence || null,
+        runtime_trace: context.runtime_trace || null,
+        observability: context.observability || null,
+        execution_rules: rules
+      }) +
       "\n\nEXPERT CONSULTATIONS\n" + JSON.stringify(run.input?.expert_results || []) +
       "\n\nUSER REQUEST\n" + String(task.user_request || run.input?.request || "") +
       "\n\nProduce the final answer for the user.";
