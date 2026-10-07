@@ -1,4 +1,4 @@
-# version 1.1
+# version 1.2
 
 # Изменения — 07.10.2026
 
@@ -36,3 +36,23 @@
 
 ### Статус
 Согласовано пользователем. Реализация и deployment выполнены. Требуется end-to-end тест через Telegram.
+
+
+## Runtime 1.2 — 04:30 MSK
+
+### Изменено
+- docs/agent.md → 1.2
+- supabase/functions/expert-worker/index.ts → 1.4
+- supabase/functions/ai-provider-worker/index.ts → 1.4
+- supabase/functions/result-aggregator/index.ts → 1.2
+- supabase/migrations/20261007020000_create_project_repository_access.sql → 1.0
+
+### Реализовано
+- Project Repository Access с provider, repository, ref и allowlist путей;
+- лимиты количества и размера evidence-файлов;
+- Project Knowledge в Context Packet 1.2;
+- controlled GitHub evidence для экспертов и Coordinator synthesis;
+- repository content трактуется как недоверенные данные, а не runtime-инструкции.
+
+### Статус
+Согласовано пользователем. Реализация выполнена. Требуется deployment и end-to-end Telegram verification.
