@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - "supabase/functions/coordinator-worker/**"
       - "supabase/functions/expert-worker/**"
       - "supabase/functions/ai-provider-worker/**"
       - "supabase/functions/result-aggregator/**"
@@ -32,6 +33,9 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+
+      - name: Deploy coordinator-worker
+        run: supabase functions deploy coordinator-worker --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
 
       - name: Deploy expert-worker
         run: supabase functions deploy expert-worker --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
