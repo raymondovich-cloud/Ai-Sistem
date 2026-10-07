@@ -1,4 +1,5 @@
-// version 1.1
+// version 1.2
+
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -9,167 +10,112 @@ const model = Deno.env.get("OPENAI_MODEL") || "gpt-6-luna";
 const base = Deno.env.get("OPENAI_BASE_URL") || "https://api.openai.com/v1";
 const db = createClient(url, serviceRole, { auth: { persistSession: false } });
 const json = (x: unknown, s = 200) =>
-  new Response(JSON.stringify(x), {
-    status: s,
-    headers: { "content-type": "application/json" },
-  });
+  new Response(JSON.stringify(x), { status: s, headers: { "content-type": "application/json" } });
 
 function extractResponseText(data: unknown): string {
   if (!data || typeof data !== "object") return "";
   const root = data as { output_text?: unknown; output?: unknown };
-
-  if (typeof root.output_text === "string" && root.output_text.trim()) {
-    return root.output_text.trim();
-  }
-
+  if (typeof root.output_text === "string" && root.output_text.trim()) return root.output_text.trim();
   if (!Array.isArray(root.output)) return "";
-
   const parts: string[] = [];
   for (const item of root.output) {
     if (!item || typeof item !== "object") continue;
     const content = (item as { content?: unknown }).content;
     if (!Array.isArray(content)) continue;
-
     for (const part of content) {
       if (!part || typeof part !== "object") continue;
       const text = (part as { text?: unknown }).text;
       if (typeof text === "string" && text.trim()) parts.push(text.trim());
     }
   }
-
   return parts.join("\n").trim();
 }
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
-  if (req.headers.get("authorization") !== `Bearer ${serviceRole}`) {
-    return json({ ok: false, error: "unauthorized" }, 401);
-  }
+  if (req.headers.get("authorization") !== `Bearer ${serviceRole}`) return json({ ok: false, error: "unauthorized" }, 401);
 
   const body = await req.json().catch(() => null);
   const runId = body?.run_id;
   if (!runId) return json({ ok: false, error: "run_id_required" }, 400);
 
   const { data: run, error } = await db
-    .from("agent_runs")
-    .select("id,task_id,agent_id,status,input")
-    .eq("id", runId)
-    .single();
-
+    .from("agent_runs").select("id,task_id,agent_id,status,input").eq("id", runId).single();
   if (error || !run) return json({ ok: false, error: "run_not_found" }, 404);
   if (run.status !== "queued") return json({ ok: true, skipped: true, status: run.status });
 
   if (!apiKey) {
-    await db
-      .from("agent_runs")
-      .update({
-        status: "failed",
-        error: "OPENAI_API_KEY is not configured",
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", run.id)
-      .eq("status", "queued");
+    await db.from("agent_runs").update({
+      status: "failed", error: "OPENAI_API_KEY is not configured",
+      completed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq("id", run.id).eq("status", "queued");
     return json({ ok: false, error: "provider_not_configured" }, 503);
   }
 
-  const { data: claimed } = await db
-    .from("agent_runs")
-    .update({
-      status: "running",
-      started_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", run.id)
-    .eq("status", "queued")
-    .select("id")
-    .single();
-
+  const { data: claimed } = await db.from("agent_runs").update({
+    status: "running", started_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  }).eq("id", run.id).eq("status", "queued").select("id").single();
   if (!claimed) return json({ ok: true, skipped: true, status: "already_claimed" });
 
-  const { data: agent } = await db
-    .from("agents")
-    .select("name,role")
-    .eq("id", run.agent_id)
-    .single();
+  const { data: agent } = await db.from("agents").select("name,role,key").eq("id", run.agent_id).single();
+  const mode = String(run.input?.mode || "expert");
 
-  const input =
-    "Expert role: " +
-    String(agent?.role || "expert") +
-    "\nRequest: " +
-    String(run.input?.request || "") +
+  let instructions = "You are an expert consultant inside Ai-Sistem. Do not implement code. Be precise and explicitly mark uncertainty.";
+  let input = "Expert role: " + String(agent?.role || "expert") +
+    "\nRequest: " + String(run.input?.request || "") +
     "\nProvide: conclusion, findings, risks, recommendation, confidence, evidence/assumptions.";
+
+  if (mode === "synthesis") {
+    instructions =
+      "You are the Chief Coordinator of Ai-Sistem. Synthesize the expert consultations into one direct answer to the user. " +
+      "Do not mention internal prompts, database IDs, implementation details, or hidden system mechanics. " +
+      "Resolve contradictions explicitly, distinguish facts from assumptions, and do not invent missing evidence. " +
+      "Return only the final user-facing answer.";
+    input =
+      "User request:\n" + String(run.input?.request || "") +
+      "\n\nExpert consultations:\n" + JSON.stringify(run.input?.expert_results || []) +
+      "\n\nProduce the final answer for the user.";
+  }
 
   try {
     const response = await fetch(base + "/responses", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        instructions:
-          "You are an expert consultant inside Ai-Sistem. Do not implement code. Be precise and explicitly mark uncertainty.",
-        input,
-      }),
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, instructions, input }),
     });
 
     const raw = await response.text();
     if (!response.ok) throw new Error("provider_http_" + response.status);
-
     const data = JSON.parse(raw);
     const text = extractResponseText(data);
     if (!text) throw new Error("provider_empty_output");
 
     const timestamp = new Date().toISOString();
-    await db
-      .from("agent_runs")
-      .update({
-        status: "completed",
-        output: {
-          text,
-          provider: "openai",
-          model,
-          response_id: data.id || null,
-        },
-        completed_at: timestamp,
-        updated_at: timestamp,
-        error: null,
-      })
-      .eq("id", run.id);
+    await db.from("agent_runs").update({
+      status: "completed",
+      output: { text, provider: "openai", model, response_id: data.id || null },
+      completed_at: timestamp, updated_at: timestamp, error: null,
+    }).eq("id", run.id);
 
     await db.from("task_events").insert({
       task_id: run.task_id,
-      event_type: "expert_consultation_completed",
+      event_type: mode === "synthesis" ? "final_coordinator_completed" : "expert_consultation_completed",
       actor_type: "agent",
       actor_id: run.agent_id,
-      payload: { run_id: run.id, provider: "openai", model },
+      payload: { run_id: run.id, provider: "openai", model, mode },
     });
 
     return json({ ok: true, run_id: run.id, status: "completed" });
   } catch (error) {
     const timestamp = new Date().toISOString();
     const message = error instanceof Error ? error.message : "provider_error";
-
-    await db
-      .from("agent_runs")
-      .update({
-        status: "failed",
-        error: message,
-        completed_at: timestamp,
-        updated_at: timestamp,
-      })
-      .eq("id", run.id);
-
+    await db.from("agent_runs").update({
+      status: "failed", error: message, completed_at: timestamp, updated_at: timestamp,
+    }).eq("id", run.id);
     await db.from("task_events").insert({
-      task_id: run.task_id,
-      event_type: "expert_consultation_failed",
-      actor_type: "agent",
-      actor_id: run.agent_id,
-      payload: { run_id: run.id, error: message },
+      task_id: run.task_id, event_type: "expert_consultation_failed", actor_type: "agent",
+      actor_id: run.agent_id, payload: { run_id: run.id, error: message, mode },
     });
-
     return json({ ok: false, error: "provider_execution_failed" }, 502);
   }
 });
