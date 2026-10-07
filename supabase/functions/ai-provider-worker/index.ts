@@ -32,7 +32,7 @@ function extractResponseText(data: unknown): string {
 }
 
 function parseStructuredExpertResult(text: string) {
-  const cleaned = text.trim().replace(/^\`\`\`(?:json)?\\s*/i, "").replace(/\\s*\`\`\`$/i, "");
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
   try {
     const parsed = JSON.parse(cleaned);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
