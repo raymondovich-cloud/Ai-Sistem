@@ -1,4 +1,4 @@
-// version 1.2
+// version 1.3
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
   const { data: task, error: taskError } = await supabase
     .from("tasks").select("id, project_id, request, status").eq("id", taskId).single();
   if (taskError || !task) return json({ ok: false, error: "task_not_found" }, 404);
-  if (task.status !== "pending") return json({ ok: true, skipped: true, status: task.status });
+  if (!["pending", "retryable"].includes(task.status)) return json({ ok: true, skipped: true, status: task.status });
 
   const { data: coordinator, error: coordinatorError } = await supabase
     .from("agents").select("id").eq("key", "coordinator").single();
@@ -63,7 +63,13 @@ Deno.serve(async (req: Request) => {
   if (agentsError || !agents) return json({ ok: false, error: "agent_lookup_failed" }, 500);
 
   const { error: statusError } = await supabase
-    .from("tasks").update({ status: "consulting" }).eq("id", task.id).eq("status", "pending");
+    .from("tasks").update({
+      status: "consulting",
+      failure_class: null,
+      next_retry_at: null,
+      last_error: null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", task.id).in("status", ["pending", "retryable"]);
   if (statusError) return json({ ok: false, error: "task_update_failed" }, 500);
 
   const { data: existing } = await supabase
@@ -106,6 +112,16 @@ Deno.serve(async (req: Request) => {
   });
 
   if (!dispatchResponse.ok) {
+    const retryCount = 1;
+    await supabase.from("tasks").update({
+      status: "retryable",
+      retry_count: retryCount,
+      failure_class: "retryable",
+      next_retry_at: new Date(Date.now() + 30000).toISOString(),
+      last_error: "expert_dispatch_failed",
+      updated_at: new Date().toISOString(),
+    }).eq("id", task.id);
+
     await supabase.from("task_events").insert({
       task_id: task.id,
       event_type: "expert_dispatch_failed",
