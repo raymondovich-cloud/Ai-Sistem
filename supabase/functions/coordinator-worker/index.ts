@@ -18,7 +18,7 @@ function json(body: unknown, status = 200) {
 
 function isRuntimeTraceRequest(request: string) {
   const text = request.toLowerCase();
-  return /runtime\\s+trace|runtime trace|трассировк|телеметр|системн(?:ый|ые)\\s+журнал|реально\\s+выполнен|этапы\\s+реально/i.test(text);
+  return /runtime\s+trace|runtime trace|трассировк|телеметр|системн(?:ый|ые)\s+журнал|реально\s+выполнен|этапы\s+реально/i.test(text);
 }
 
 function classify(request: string) {
