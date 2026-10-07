@@ -1,4 +1,4 @@
-// version 1.1
+// version 1.2
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -25,12 +25,21 @@ async function dispatchRun(runId: string) {
   });
 
   const raw = await response.text();
-  return {
-    runId,
-    ok: response.ok,
-    status: response.status,
-    body: raw,
-  };
+  return { runId, ok: response.ok, status: response.status, body: raw };
+}
+
+async function dispatchResultAggregator(taskId: string) {
+  const response = await fetch(`${supabaseUrl}/functions/v1/result-aggregator`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({ task_id: taskId }),
+  });
+
+  const raw = await response.text();
+  return { ok: response.ok, status: response.status, body: raw };
 }
 
 Deno.serve(async (req: Request) => {
@@ -44,15 +53,10 @@ Deno.serve(async (req: Request) => {
   if (!taskId) return json({ ok: false, error: "task_id_required" }, 400);
 
   const { data: task, error: taskError } = await supabase
-    .from("tasks")
-    .select("id, project_id, request, status")
-    .eq("id", taskId)
-    .single();
+    .from("tasks").select("id, project_id, request, status").eq("id", taskId).single();
 
   if (taskError || !task) return json({ ok: false, error: "task_not_found" }, 404);
-  if (task.status !== "consulting") {
-    return json({ ok: true, skipped: true, status: task.status });
-  }
+  if (task.status !== "consulting") return json({ ok: true, skipped: true, status: task.status });
 
   const { data: participants, error: participantsError } = await supabase
     .from("task_participants")
@@ -74,9 +78,7 @@ Deno.serve(async (req: Request) => {
   if (agentsError || !agents) return json({ ok: false, error: "agent_lookup_failed" }, 500);
 
   const { data: existing, error: existingError } = await supabase
-    .from("agent_runs")
-    .select("agent_id, status")
-    .eq("task_id", task.id);
+    .from("agent_runs").select("agent_id, status").eq("task_id", task.id);
 
   if (existingError) return json({ ok: false, error: "run_lookup_failed" }, 500);
 
@@ -99,13 +101,9 @@ Deno.serve(async (req: Request) => {
   let createdRuns: { id: string }[] = [];
   if (runs.length > 0) {
     const { data: insertedRuns, error: insertError } = await supabase
-      .from("agent_runs")
-      .insert(runs)
-      .select("id");
+      .from("agent_runs").insert(runs).select("id");
 
-    if (insertError || !insertedRuns) {
-      return json({ ok: false, error: "run_creation_failed" }, 500);
-    }
+    if (insertError || !insertedRuns) return json({ ok: false, error: "run_creation_failed" }, 500);
     createdRuns = insertedRuns;
   }
 
@@ -114,16 +112,13 @@ Deno.serve(async (req: Request) => {
     event_type: "expert_consultations_queued",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1.1",
+      runtime: "expert_worker_v1.2",
       consultants: agents.map((agent) => agent.key),
       queued_count: createdRuns.length,
     },
   });
 
-  const dispatchResults = await Promise.all(
-    createdRuns.map((run) => dispatchRun(run.id)),
-  );
-
+  const dispatchResults = await Promise.all(createdRuns.map((run) => dispatchRun(run.id)));
   const failedDispatches = dispatchResults.filter((result) => !result.ok);
 
   await supabase.from("task_events").insert({
@@ -131,7 +126,7 @@ Deno.serve(async (req: Request) => {
     event_type: "expert_consultations_dispatched",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1.1",
+      runtime: "expert_worker_v1.2",
       dispatched_count: dispatchResults.length - failedDispatches.length,
       failed_count: failedDispatches.length,
       results: dispatchResults.map((result) => ({
@@ -142,13 +137,57 @@ Deno.serve(async (req: Request) => {
     },
   });
 
-  return json({
-    ok: failedDispatches.length === 0,
+  if (failedDispatches.length > 0) {
+    return json({
+      ok: false,
+      task_id: task.id,
+      status: "consulting",
+      queued_runs: createdRuns.length,
+      dispatched_runs: dispatchResults.length - failedDispatches.length,
+      failed_dispatches: failedDispatches.length,
+      consultants: agents.map((agent) => agent.key),
+    }, 502);
+  }
+
+  const { data: consultantRuns, error: consultantRunsError } = await supabase
+    .from("agent_runs")
+    .select("id, agent_id, status")
+    .eq("task_id", task.id)
+    .in("agent_id", consultantIds);
+
+  if (consultantRunsError) return json({ ok: false, error: "consultant_status_lookup_failed" }, 500);
+
+  const allCompleted = (consultantRuns ?? []).length === consultantIds.length &&
+    (consultantRuns ?? []).every((run) => run.status === "completed");
+
+  if (!allCompleted) {
+    return json({
+      ok: true,
+      task_id: task.id,
+      status: "consulting",
+      queued_runs: createdRuns.length,
+      dispatched_runs: dispatchResults.length,
+      finalization: "waiting",
+    });
+  }
+
+  const finalization = await dispatchResultAggregator(task.id);
+  await supabase.from("task_events").insert({
     task_id: task.id,
-    status: "consulting",
-    queued_runs: createdRuns.length,
-    dispatched_runs: dispatchResults.length - failedDispatches.length,
-    failed_dispatches: failedDispatches.length,
-    consultants: agents.map((agent) => agent.key),
+    event_type: finalization.ok ? "result_aggregation_dispatched" : "result_aggregation_failed",
+    actor_type: "coordinator",
+    payload: {
+      runtime: "result_aggregator_v1.0",
+      status: finalization.status,
+    },
   });
+
+  return json({
+    ok: finalization.ok,
+    task_id: task.id,
+    status: finalization.ok ? "completed" : "consulting",
+    queued_runs: createdRuns.length,
+    dispatched_runs: dispatchResults.length,
+    finalization: finalization.ok ? "completed" : "failed",
+  }, finalization.ok ? 200 : 502);
 });
