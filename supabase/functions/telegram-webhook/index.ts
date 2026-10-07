@@ -1,4 +1,4 @@
-// version 1.2
+// version 1.3
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -113,7 +113,12 @@ Deno.serve(async (req: Request) => {
   }
 
   await supabase.from("task_events").insert({
-    task_id: task.id, event_type: "task_created", actor_type: "system",
+    task_id: task.id, event_type: "access_granted", actor_type: "system",
+    payload: { channel: "telegram", access_role: access.role },
+  });
+
+  await supabase.from("task_events").insert({
+    task_id: task.id, event_type: "update_accepted", actor_type: "system",
     payload: {
       channel: "telegram",
       telegram_update_id: telegramUpdateId,
@@ -133,9 +138,20 @@ Deno.serve(async (req: Request) => {
   });
 
   if (!response.ok) {
+    const retryCount = 1;
+    const exhausted = retryCount >= 3;
+    await supabase.from("tasks").update({
+      status: exhausted ? "failed" : "retryable",
+      retry_count: retryCount,
+      failure_class: "retryable",
+      next_retry_at: exhausted ? null : new Date(Date.now() + 30000).toISOString(),
+      last_error: "coordinator_dispatch_failed",
+      updated_at: new Date().toISOString(),
+    }).eq("id", task.id).eq("status", "pending");
+
     await supabase.from("task_events").insert({
       task_id: task.id, event_type: "coordination_dispatch_failed", actor_type: "system",
-      payload: { status: response.status },
+      payload: { status: response.status, retry_scheduled: !exhausted },
     });
   }
 
