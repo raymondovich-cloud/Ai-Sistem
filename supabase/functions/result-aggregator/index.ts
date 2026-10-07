@@ -1,4 +1,4 @@
-// version 1.9
+// version 2.0
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -376,15 +376,47 @@ Deno.serve(async (req: Request) => {
     body: JSON.stringify({ run_id: finalRun.id }),
   });
   if (!providerResponse.ok) {
+    const { data: failedProviderRun } = await db
+      .from("agent_runs")
+      .select("error")
+      .eq("id", finalRun.id)
+      .single();
+    const providerError = String(failedProviderRun?.error || "final_provider_failed");
+    const retryMatch = providerError.match(/\\|retry_after=(\\d+)/);
+    const retryAfterSeconds = retryMatch ? Number(retryMatch[1]) : null;
+    const isRateLimit = providerError.includes("provider_http_429") &&
+      (providerError.includes("rate_limit_exceeded") || providerError.includes("rate_limit"));
+    const boundedDelay = retryAfterSeconds !== null
+      ? Math.max(30, Math.min(retryAfterSeconds, 604800))
+      : 300;
     await markFinalizationFailed(task.id, finalization.claim_token);
     await db.from("tasks").update({
       status: "retryable",
       failure_class: "retryable",
-      next_retry_at: new Date(Date.now() + 30000).toISOString(),
-      last_error: "final_provider_failed",
+      next_retry_at: new Date(Date.now() + boundedDelay * 1000).toISOString(),
+      last_error: isRateLimit
+        ? "provider_rate_limit_wait_" + boundedDelay + "s"
+        : "final_provider_failed",
       updated_at: new Date().toISOString(),
     }).eq("id", task.id);
-    return json({ ok: false, error: "final_provider_failed" }, 502);
+    await db.from("task_events").insert({
+      task_id: task.id,
+      event_type: "provider_rate_limit_scheduled",
+      actor_type: "coordinator",
+      actor_id: coordinator.id,
+      payload: {
+        runtime: "result_aggregator_v2.0",
+        provider_error: providerError.slice(0, 800),
+        retry_after_seconds: retryAfterSeconds,
+        scheduled_delay_seconds: boundedDelay,
+        rate_limit: isRateLimit,
+      },
+    });
+    return json({
+      ok: false,
+      error: isRateLimit ? "provider_rate_limit_scheduled" : "final_provider_failed",
+      retry_after_seconds: retryAfterSeconds,
+    }, 502);
   }
   }
 
@@ -452,7 +484,7 @@ Deno.serve(async (req: Request) => {
     actor_type: "coordinator",
     actor_id: coordinator.id,
     payload: {
-      runtime: "result_aggregator_v1.8",
+      runtime: "result_aggregator_v2.0",
       final_run_id: finalRun.id,
       telegram_chat_id: String(chatId),
       telegram_message_ids: delivery.messageIds,
