@@ -1,4 +1,4 @@
-// version 1.8
+// version 1.9
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -320,6 +320,25 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  const { error: synthesizingError } = await supabase.from("tasks").update({
+    status: "synthesizing",
+    failure_class: null,
+    next_retry_at: null,
+    last_error: null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", task.id).eq("status", "consulting");
+
+  if (synthesizingError) {
+    await supabase.from("tasks").update({
+      status: "retryable",
+      failure_class: "retryable",
+      next_retry_at: new Date(Date.now() + 30000).toISOString(),
+      last_error: "synthesizing_transition_failed",
+      updated_at: new Date().toISOString(),
+    }).eq("id", task.id).eq("status", "consulting");
+    return json({ ok: false, task_id: task.id, error: "synthesizing_transition_failed" }, 500);
+  }
+
   const finalization = await dispatchResultAggregator(task.id);
   await supabase.from("task_events").insert({
     task_id: task.id,
@@ -334,7 +353,7 @@ Deno.serve(async (req: Request) => {
   return json({
     ok: finalization.ok,
     task_id: task.id,
-    status: finalization.ok ? "completed" : "consulting",
+    status: finalization.ok ? "completed" : "retryable",
     queued_runs: createdRuns.length,
     dispatched_runs: dispatchResults.length,
     finalization: finalization.ok ? "completed" : "failed",
