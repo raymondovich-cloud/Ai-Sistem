@@ -510,7 +510,7 @@ Deno.serve(async (req: Request) => {
       ? Math.max(30, Math.min(retryAfterSeconds, 604800))
       : 300;
     await markFinalizationFailed(task.id, finalization.claim_token);
-    await db.from("tasks").update({
+    const { error: taskFailureUpdateError } = await db.from("tasks").update({
       status: contextBudgetExceeded || (isRateLimit && longProviderWait) ? "failed" : "retryable",
       failure_class: contextBudgetExceeded || (isRateLimit && longProviderWait) ? "permanent" : "retryable",
       next_retry_at: contextBudgetExceeded || (isRateLimit && longProviderWait) ? null : new Date(Date.now() + boundedDelay * 1000).toISOString(),
@@ -521,6 +521,11 @@ Deno.serve(async (req: Request) => {
           : "final_provider_failed"),
       updated_at: new Date().toISOString(),
     }).eq("id", task.id);
+
+    if (taskFailureUpdateError) {
+      return json({ ok: false, error: "task_failure_status_update_failed" }, 500);
+    }
+
     await db.from("task_events").insert({
       task_id: task.id,
       event_type: contextBudgetExceeded ? "provider_context_budget_exceeded" : "provider_rate_limit_scheduled",
