@@ -217,6 +217,29 @@ Deno.serve(async (req: Request) => {
     try {
       const notice = "Не удалось обработать запрос: объём контекста превысил установленный лимит. Попробуйте уточнить задачу или разбить её на несколько сообщений.";
       const delivery = await sendTelegram(String(telegramUpdate.chat_id), notice);
+
+      // Commit delivery before best-effort event logging so a logging error does not
+      // cause a later invocation to send the same Telegram notice again.
+      const { data: deliveryCommitted, error: deliveryCommitError } = await db
+        .from("task_finalizations")
+        .update({
+          status: "sent",
+          sent_at: new Date().toISOString(),
+          telegram_message_ids: delivery.messageIds,
+          telegram_api_confirmed: true,
+          telegram_api_responses: delivery.apiResponses,
+          delivery_error: null,
+        })
+        .eq("task_id", task.id)
+        .eq("claim_token", finalization.claim_token)
+        .eq("status", "claimed")
+        .select("task_id")
+        .maybeSingle();
+
+      if (deliveryCommitError || !deliveryCommitted) {
+        throw new Error("failure_notice_delivery_commit_failed");
+      }
+
       const { error: eventError } = await db.from("task_events").insert({
         task_id: task.id,
         event_type: "task_failure_notified",
@@ -228,9 +251,13 @@ Deno.serve(async (req: Request) => {
           telegram_api_confirmed: true,
         },
       });
-      if (eventError) throw new Error("failure_notice_event_write_failed");
-      await markFinalizationSent(task.id, finalization.claim_token);
-      return json({ ok: true, task_id: task.id, status: "failed", user_notified: true });
+      return json({
+        ok: true,
+        task_id: task.id,
+        status: "failed",
+        user_notified: true,
+        event_logged: !eventError,
+      });
     } catch (error) {
       await markFinalizationFailed(task.id, finalization.claim_token);
       await db.from("task_events").insert({
@@ -509,6 +536,24 @@ Deno.serve(async (req: Request) => {
         context_budget_exceeded: contextBudgetExceeded,
       },
     });
+
+    // Synthesis can exceed the context budget after expert consultations succeed.
+    // Re-enter the failed-task path now, in this invocation, instead of relying on
+    // an external retry to notify the Telegram user.
+    if (contextBudgetExceeded) {
+      const notificationResponse = await fetch(`${url}/functions/v1/result-aggregator`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${serviceRole}` },
+        body: JSON.stringify({ task_id: task.id }),
+      });
+      const notificationBody = await notificationResponse.json().catch(() => null);
+      return json({
+        ok: false,
+        error: "context_budget_exceeded",
+        user_notified: notificationResponse.ok && notificationBody?.user_notified === true,
+      }, 502);
+    }
+
     return json({
       ok: false,
       error: contextBudgetExceeded
