@@ -1,4 +1,4 @@
-// version 2.0
+// version 2.1
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -320,6 +320,12 @@ Deno.serve(async (req: Request) => {
       last_error: contextBudgetExceeded ? "provider_context_budget_exceeded" : "expert_dispatch_failed",
       updated_at: new Date().toISOString(),
     }).eq("id", task.id);
+
+    if (contextBudgetExceeded) {
+      // The aggregator owns Telegram delivery and records the notification outcome.
+      // The task remains permanently failed; this call only informs the user.
+      await dispatchResultAggregator(task.id);
+    }
 
     return json({
       ok: false,
