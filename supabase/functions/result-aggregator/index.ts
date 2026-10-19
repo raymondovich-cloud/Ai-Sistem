@@ -1,4 +1,4 @@
-// version 2.1
+// version 2.2
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -46,21 +46,22 @@ function compactText(value: unknown, maxChars: number) {
 
 function compactExpertResult(result: any) {
   return {
-    conclusion: compactText(result?.conclusion, 4000),
-    findings: Array.isArray(result?.findings) ? result.findings.slice(0, 8).map((x: unknown) => compactText(x, 800)) : [],
-    risks: Array.isArray(result?.risks) ? result.risks.slice(0, 6).map((x: unknown) => compactText(x, 800)) : [],
-    recommendations: Array.isArray(result?.recommendations) ? result.recommendations.slice(0, 8).map((x: unknown) => compactText(x, 800)) : [],
-    facts: Array.isArray(result?.facts) ? result.facts.slice(0, 12).map((x: unknown) => compactText(x, 800)) : [],
-    assumptions: Array.isArray(result?.assumptions) ? result.assumptions.slice(0, 6).map((x: unknown) => compactText(x, 800)) : [],
-    unknowns: Array.isArray(result?.unknowns) ? result.unknowns.slice(0, 6).map((x: unknown) => compactText(x, 800)) : [],
+    conclusion: compactText(result?.conclusion, 1200),
+    findings: Array.isArray(result?.findings) ? result.findings.slice(0, 4).map((x: unknown) => compactText(x, 250)) : [],
+    risks: Array.isArray(result?.risks) ? result.risks.slice(0, 3).map((x: unknown) => compactText(x, 250)) : [],
+    recommendations: Array.isArray(result?.recommendations) ? result.recommendations.slice(0, 4).map((x: unknown) => compactText(x, 250)) : [],
+    facts: Array.isArray(result?.facts) ? result.facts.slice(0, 5).map((x: unknown) => compactText(x, 180)) : [],
+    assumptions: Array.isArray(result?.assumptions) ? result.assumptions.slice(0, 3).map((x: unknown) => compactText(x, 180)) : [],
+    unknowns: Array.isArray(result?.unknowns) ? result.unknowns.slice(0, 3).map((x: unknown) => compactText(x, 180)) : [],
     confidence: result?.confidence ?? null,
   };
 }
 
 function compactProjectEvidence(evidence: any[]) {
-  return evidence.slice(0, 12).map((item) => ({
+  return evidence.slice(0, 8).map((item) => ({
     path: compactText(item?.path, 200),
-    content: compactText(item?.content, 1800),
+    content: compactText(item?.content, 900),
+    truncated: Boolean(item?.truncated || item?.omitted),
   }));
 }
 
