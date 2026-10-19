@@ -8,7 +8,8 @@ const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const apiKey = Deno.env.get("OPENAI_API_KEY");
 const model = Deno.env.get("OPENAI_MODEL") || "gpt-6-luna";
 const base = Deno.env.get("OPENAI_BASE_URL") || "https://api.openai.com/v1";
-const maxInputBytes = Math.max(8000, Number(Deno.env.get("AI_PROVIDER_MAX_INPUT_BYTES") || 48000));
+const configuredMaxInputBytes = Number(Deno.env.get("AI_PROVIDER_MAX_INPUT_BYTES") || 48000);
+const maxInputBytes = Number.isFinite(configuredMaxInputBytes) ? Math.max(8000, configuredMaxInputBytes) : 48000;
 const db = createClient(url, serviceRole, { auth: { persistSession: false } });
 
 function getUsage(data: any) {
@@ -141,7 +142,7 @@ Deno.serve(async (req) => {
       "\n\nYour output must be valid JSON and must not contain markdown fences.";
   }
 
-  const payloadBytes = new TextEncoder().encode(instructions + "\\n" + input).length;
+  const payloadBytes = new TextEncoder().encode(instructions + "\n" + input).length;
   const estimatedInputTokens = roughTokenEstimate(payloadBytes);
   const providerStartedAt = Date.now();
 
@@ -209,7 +210,7 @@ Deno.serve(async (req) => {
       actor_type: "agent",
       actor_id: run.agent_id,
       payload: {
-        runtime: "ai_provider_worker_v1.4",
+        runtime: "ai_provider_worker_v1.5",
         run_id: run.id,
         provider: "openai",
         model,
