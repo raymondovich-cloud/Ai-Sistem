@@ -1,0 +1,41 @@
+name: Ai-Sistem Edge Function Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/functions/ai-provider-worker/**"
+      - "supabase/functions/expert-worker/**"
+      - "supabase/functions/result-aggregator/**"
+      - ".github/workflows/ai-sistem-edge-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-sistem-edge-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deno-check:
+    name: Deno type-check (changed runtime functions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check ai-provider-worker
+        run: deno check --no-lock supabase/functions/ai-provider-worker/index.ts
+
+      - name: Check expert-worker
+        run: deno check --no-lock supabase/functions/expert-worker/index.ts
+
+      - name: Check result-aggregator
+        run: deno check --no-lock supabase/functions/result-aggregator/index.ts

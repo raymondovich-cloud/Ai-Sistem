@@ -1,4 +1,4 @@
-// version 2.1
+// version 2.3
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -46,21 +46,22 @@ function compactText(value: unknown, maxChars: number) {
 
 function compactExpertResult(result: any) {
   return {
-    conclusion: compactText(result?.conclusion, 4000),
-    findings: Array.isArray(result?.findings) ? result.findings.slice(0, 8).map((x: unknown) => compactText(x, 800)) : [],
-    risks: Array.isArray(result?.risks) ? result.risks.slice(0, 6).map((x: unknown) => compactText(x, 800)) : [],
-    recommendations: Array.isArray(result?.recommendations) ? result.recommendations.slice(0, 8).map((x: unknown) => compactText(x, 800)) : [],
-    facts: Array.isArray(result?.facts) ? result.facts.slice(0, 12).map((x: unknown) => compactText(x, 800)) : [],
-    assumptions: Array.isArray(result?.assumptions) ? result.assumptions.slice(0, 6).map((x: unknown) => compactText(x, 800)) : [],
-    unknowns: Array.isArray(result?.unknowns) ? result.unknowns.slice(0, 6).map((x: unknown) => compactText(x, 800)) : [],
+    conclusion: compactText(result?.conclusion, 1200),
+    findings: Array.isArray(result?.findings) ? result.findings.slice(0, 4).map((x: unknown) => compactText(x, 250)) : [],
+    risks: Array.isArray(result?.risks) ? result.risks.slice(0, 3).map((x: unknown) => compactText(x, 250)) : [],
+    recommendations: Array.isArray(result?.recommendations) ? result.recommendations.slice(0, 4).map((x: unknown) => compactText(x, 250)) : [],
+    facts: Array.isArray(result?.facts) ? result.facts.slice(0, 5).map((x: unknown) => compactText(x, 180)) : [],
+    assumptions: Array.isArray(result?.assumptions) ? result.assumptions.slice(0, 3).map((x: unknown) => compactText(x, 180)) : [],
+    unknowns: Array.isArray(result?.unknowns) ? result.unknowns.slice(0, 3).map((x: unknown) => compactText(x, 180)) : [],
     confidence: result?.confidence ?? null,
   };
 }
 
 function compactProjectEvidence(evidence: any[]) {
-  return evidence.slice(0, 12).map((item) => ({
+  return evidence.slice(0, 8).map((item) => ({
     path: compactText(item?.path, 200),
-    content: compactText(item?.content, 1800),
+    content: compactText(item?.content, 900),
+    truncated: Boolean(item?.truncated || item?.omitted),
   }));
 }
 
@@ -181,6 +182,98 @@ Deno.serve(async (req: Request) => {
   if (taskError || !task) return json({ ok: false, error: "task_not_found" }, 404);
 
   if (task.status === "completed") return json({ ok: true, skipped: true, status: "completed" });
+
+  // Permanent context-budget failures need a user-facing Telegram notification.
+  // This path is idempotent and does not change the task's failed status.
+  if (task.status === "failed" && task.last_error === "provider_context_budget_exceeded") {
+    const finalization = await claimFinalization(task.id, true);
+    if (!finalization) return json({ ok: true, skipped: true, status: "finalization_in_progress" });
+
+    const { data: existingNotice } = await db
+      .from("task_events")
+      .select("id")
+      .eq("task_id", task.id)
+      .eq("event_type", "task_failure_notified")
+      .limit(1);
+
+    if ((existingNotice ?? []).length > 0) {
+      await markFinalizationSent(task.id, finalization.claim_token);
+      return json({ ok: true, skipped: true, status: "failure_already_notified" });
+    }
+
+    const { data: telegramUpdate } = await db
+      .from("telegram_updates")
+      .select("chat_id")
+      .eq("task_id", task.id)
+      .order("received_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!telegramUpdate?.chat_id) {
+      await markFinalizationFailed(task.id, finalization.claim_token);
+      return json({ ok: false, error: "telegram_chat_id_missing" }, 500);
+    }
+
+    try {
+      const notice = "Не удалось обработать запрос: объём контекста превысил установленный лимит. Попробуйте уточнить задачу или разбить её на несколько сообщений.";
+      const delivery = await sendTelegram(String(telegramUpdate.chat_id), notice);
+
+      // Commit delivery before best-effort event logging so a logging error does not
+      // cause a later invocation to send the same Telegram notice again.
+      const { data: deliveryCommitted, error: deliveryCommitError } = await db
+        .from("task_finalizations")
+        .update({
+          status: "sent",
+          sent_at: new Date().toISOString(),
+          telegram_message_ids: delivery.messageIds,
+          telegram_api_confirmed: true,
+          telegram_api_responses: delivery.apiResponses,
+          delivery_error: null,
+        })
+        .eq("task_id", task.id)
+        .eq("claim_token", finalization.claim_token)
+        .eq("status", "claimed")
+        .select("task_id")
+        .maybeSingle();
+
+      if (deliveryCommitError || !deliveryCommitted) {
+        throw new Error("failure_notice_delivery_commit_failed");
+      }
+
+      const { error: eventError } = await db.from("task_events").insert({
+        task_id: task.id,
+        event_type: "task_failure_notified",
+        actor_type: "coordinator",
+        payload: {
+          runtime: "result_aggregator_v2.3",
+          reason: "provider_context_budget_exceeded",
+          telegram_message_ids: delivery.messageIds,
+          telegram_api_confirmed: true,
+        },
+      });
+      return json({
+        ok: true,
+        task_id: task.id,
+        status: "failed",
+        user_notified: true,
+        event_logged: !eventError,
+      });
+    } catch (error) {
+      await markFinalizationFailed(task.id, finalization.claim_token);
+      await db.from("task_events").insert({
+        task_id: task.id,
+        event_type: "task_failure_notification_failed",
+        actor_type: "coordinator",
+        payload: {
+          runtime: "result_aggregator_v2.3",
+          reason: "provider_context_budget_exceeded",
+          error: error instanceof Error ? error.message.slice(0, 300) : "telegram_notification_failed",
+        },
+      });
+      return json({ ok: false, error: "failure_notification_failed" }, 502);
+    }
+  }
+
   if (!["synthesizing", "retryable"].includes(task.status)) return json({ ok: true, skipped: true, status: task.status });
 
   const finalization = await claimFinalization(task.id, task.status === "synthesizing" || task.status === "retryable");
@@ -411,23 +504,31 @@ Deno.serve(async (req: Request) => {
     const retryAfterSeconds = retryMatch ? Number(retryMatch[1]) : null;
     const isRateLimit = providerError.includes("provider_http_429") &&
       (providerError.includes("rate_limit_exceeded") || providerError.includes("rate_limit"));
+    const contextBudgetExceeded = providerError.startsWith("context_budget_exceeded");
     const longProviderWait = retryAfterSeconds !== null && retryAfterSeconds > 3600;
     const boundedDelay = retryAfterSeconds !== null
       ? Math.max(30, Math.min(retryAfterSeconds, 604800))
       : 300;
     await markFinalizationFailed(task.id, finalization.claim_token);
-    await db.from("tasks").update({
-      status: isRateLimit && longProviderWait ? "failed" : "retryable",
-      failure_class: isRateLimit && longProviderWait ? "permanent" : "retryable",
-      next_retry_at: isRateLimit && longProviderWait ? null : new Date(Date.now() + boundedDelay * 1000).toISOString(),
-      last_error: isRateLimit
-        ? "provider_rate_limit_" + (longProviderWait ? "blocked_" : "wait_") + boundedDelay + "s"
-        : "final_provider_failed",
+    const { error: taskFailureUpdateError } = await db.from("tasks").update({
+      status: contextBudgetExceeded || (isRateLimit && longProviderWait) ? "failed" : "retryable",
+      failure_class: contextBudgetExceeded || (isRateLimit && longProviderWait) ? "permanent" : "retryable",
+      next_retry_at: contextBudgetExceeded || (isRateLimit && longProviderWait) ? null : new Date(Date.now() + boundedDelay * 1000).toISOString(),
+      last_error: contextBudgetExceeded
+        ? "provider_context_budget_exceeded"
+        : (isRateLimit
+          ? "provider_rate_limit_" + (longProviderWait ? "blocked_" : "wait_") + boundedDelay + "s"
+          : "final_provider_failed"),
       updated_at: new Date().toISOString(),
     }).eq("id", task.id);
+
+    if (taskFailureUpdateError) {
+      return json({ ok: false, error: "task_failure_status_update_failed" }, 500);
+    }
+
     await db.from("task_events").insert({
       task_id: task.id,
-      event_type: "provider_rate_limit_scheduled",
+      event_type: contextBudgetExceeded ? "provider_context_budget_exceeded" : "provider_rate_limit_scheduled",
       actor_type: "coordinator",
       actor_id: coordinator.id,
       payload: {
@@ -437,13 +538,34 @@ Deno.serve(async (req: Request) => {
         scheduled_delay_seconds: boundedDelay,
         long_provider_wait: longProviderWait,
         rate_limit: isRateLimit,
+        context_budget_exceeded: contextBudgetExceeded,
       },
     });
+
+    // Synthesis can exceed the context budget after expert consultations succeed.
+    // Re-enter the failed-task path now, in this invocation, instead of relying on
+    // an external retry to notify the Telegram user.
+    if (contextBudgetExceeded) {
+      const notificationResponse = await fetch(`${url}/functions/v1/result-aggregator`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${serviceRole}` },
+        body: JSON.stringify({ task_id: task.id }),
+      });
+      const notificationBody = await notificationResponse.json().catch(() => null);
+      return json({
+        ok: false,
+        error: "context_budget_exceeded",
+        user_notified: notificationResponse.ok && notificationBody?.user_notified === true,
+      }, 502);
+    }
+
     return json({
       ok: false,
-      error: isRateLimit && longProviderWait
-        ? "provider_rate_limit_blocked"
-        : (isRateLimit ? "provider_rate_limit_scheduled" : "final_provider_failed"),
+      error: contextBudgetExceeded
+        ? "context_budget_exceeded"
+        : (isRateLimit && longProviderWait
+          ? "provider_rate_limit_blocked"
+          : (isRateLimit ? "provider_rate_limit_scheduled" : "final_provider_failed")),
       retry_after_seconds: retryAfterSeconds,
     }, 502);
   }
