@@ -138,7 +138,7 @@ Deno.serve(async (req: Request) => {
   let evidenceBytes = 0;
   if (repositoryAccess) for (const path of evidencePaths) {
     const remainingBytes = maxEvidenceTotalBytes - evidenceBytes;
-    if (remainingBytes < 1000) {
+    if (remainingBytes < 2000) {
       evidence.push({ source: "github", repository: repositoryAccess.repository_url, ref: repositoryAccess.ref, path, omitted: true, reason: "aggregate_evidence_budget_reached" });
       continue;
     }
@@ -285,15 +285,22 @@ Deno.serve(async (req: Request) => {
 
   const dispatchResults = await Promise.all(createdRuns.map((run) => dispatchRun(run.id)));
   const failedDispatches = dispatchResults.filter((result) => !result.ok);
+  let contextBudgetExceeded = false;
+  if (failedDispatches.length > 0) {
+    const failedRunIds = failedDispatches.map((result) => result.runId);
+    const { data: failedRuns } = await supabase.from("agent_runs").select("id,error").in("id", failedRunIds);
+    contextBudgetExceeded = (failedRuns ?? []).some((run) => String(run.error || "").startsWith("context_budget_exceeded"));
+  }
 
   await supabase.from("task_events").insert({
     task_id: task.id,
     event_type: "expert_consultations_dispatched",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1.9",
+      runtime: "expert_worker_v2.0",
       dispatched_count: dispatchResults.length - failedDispatches.length,
       failed_count: failedDispatches.length,
+      context_budget_exceeded: contextBudgetExceeded,
       results: dispatchResults.map((result) => ({
         run_id: result.runId,
         ok: result.ok,
@@ -304,13 +311,13 @@ Deno.serve(async (req: Request) => {
 
   if (failedDispatches.length > 0) {
     const retryCount = Number(task.retry_count || 0) + 1;
-    const exhausted = retryCount >= Number(task.max_attempts || 3);
+    const exhausted = contextBudgetExceeded || retryCount >= Number(task.max_attempts || 3);
     await supabase.from("tasks").update({
       status: exhausted ? "failed" : "retryable",
       retry_count: retryCount,
-      failure_class: "retryable",
+      failure_class: contextBudgetExceeded ? "permanent" : "retryable",
       next_retry_at: exhausted ? null : new Date(Date.now() + 30000).toISOString(),
-      last_error: "expert_dispatch_failed",
+      last_error: contextBudgetExceeded ? "provider_context_budget_exceeded" : "expert_dispatch_failed",
       updated_at: new Date().toISOString(),
     }).eq("id", task.id);
 
@@ -318,6 +325,7 @@ Deno.serve(async (req: Request) => {
       ok: false,
       task_id: task.id,
       status: exhausted ? "failed" : "retryable",
+      context_budget_exceeded: contextBudgetExceeded,
       queued_runs: createdRuns.length,
       dispatched_runs: dispatchResults.length - failedDispatches.length,
       failed_dispatches: failedDispatches.length,
