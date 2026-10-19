@@ -6,8 +6,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
-const maxEvidenceFileBytes = Math.max(2000, Number(Deno.env.get("AI_EVIDENCE_MAX_FILE_BYTES") || 12000));
-const maxEvidenceTotalBytes = Math.max(maxEvidenceFileBytes, Number(Deno.env.get("AI_EVIDENCE_MAX_TOTAL_BYTES") || 30000));
+const configuredMaxEvidenceFileBytes = Number(Deno.env.get("AI_EVIDENCE_MAX_FILE_BYTES") || 12000);
+const maxEvidenceFileBytes = Number.isFinite(configuredMaxEvidenceFileBytes) ? Math.max(2000, configuredMaxEvidenceFileBytes) : 12000;
+const configuredMaxEvidenceTotalBytes = Number(Deno.env.get("AI_EVIDENCE_MAX_TOTAL_BYTES") || 30000);
+const maxEvidenceTotalBytes = Number.isFinite(configuredMaxEvidenceTotalBytes) ? Math.max(maxEvidenceFileBytes, configuredMaxEvidenceTotalBytes) : Math.max(maxEvidenceFileBytes, 30000);
 const githubRawBase = "https://raw.githubusercontent.com/raymondovich-cloud/Ai-Sistem/dbe2a1b42899cc93e53533d61781bd2f94d95021/";
 
 function isAllowedInstructionPath(path: string) {
@@ -50,7 +52,7 @@ function rawGithubUrl(repositoryUrl: string, ref: string, path: string) {
 function limitEvidenceText(text: string, maxBytes: number) {
   const encoder = new TextEncoder();
   if (encoder.encode(text).length <= maxBytes) return { content: text, original_bytes: encoder.encode(text).length, truncated: false };
-  const marker = "\\n[TRUNCATED: repository evidence exceeded the configured context budget]\\n";
+  const marker = "\n[TRUNCATED: repository evidence exceeded the configured context budget]\n";
   const markerBytes = encoder.encode(marker).length;
   const available = Math.max(0, maxBytes - markerBytes);
   const headBudget = Math.floor(available * 0.75);
@@ -141,7 +143,8 @@ Deno.serve(async (req: Request) => {
       continue;
     }
     try {
-      const perFileLimit = Math.min(maxEvidenceFileBytes, remainingBytes);
+      const configuredFileLimit = Number(repositoryAccess.max_bytes_per_file || maxEvidenceFileBytes);
+      const perFileLimit = Math.min(maxEvidenceFileBytes, Math.max(2000, configuredFileLimit), remainingBytes);
       const loaded = await loadEvidence(repositoryAccess.repository_url, repositoryAccess.ref, path, perFileLimit);
       evidenceBytes += new TextEncoder().encode(loaded.content).length;
       evidence.push({ source: "github", repository: repositoryAccess.repository_url, ref: repositoryAccess.ref, path, content: loaded.content, original_bytes: loaded.original_bytes, truncated: loaded.truncated });
@@ -264,7 +267,7 @@ Deno.serve(async (req: Request) => {
     event_type: "expert_consultations_queued",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1.4",
+      runtime: "expert_worker_v2.0",
       consultants: agents.map((agent) => agent.key),
       queued_count: createdRuns.length,
     },
