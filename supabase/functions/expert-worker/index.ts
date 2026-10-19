@@ -1,4 +1,4 @@
-// version 1.9
+// version 2.0
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -6,6 +6,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+const configuredMaxEvidenceFileBytes = Number(Deno.env.get("AI_EVIDENCE_MAX_FILE_BYTES") || 12000);
+const maxEvidenceFileBytes = Number.isFinite(configuredMaxEvidenceFileBytes) ? Math.max(2000, configuredMaxEvidenceFileBytes) : 12000;
+const configuredMaxEvidenceTotalBytes = Number(Deno.env.get("AI_EVIDENCE_MAX_TOTAL_BYTES") || 30000);
+const maxEvidenceTotalBytes = Number.isFinite(configuredMaxEvidenceTotalBytes) ? Math.max(maxEvidenceFileBytes, configuredMaxEvidenceTotalBytes) : Math.max(maxEvidenceFileBytes, 30000);
 const githubRawBase = "https://raw.githubusercontent.com/raymondovich-cloud/Ai-Sistem/dbe2a1b42899cc93e53533d61781bd2f94d95021/";
 
 function isAllowedInstructionPath(path: string) {
@@ -45,6 +49,20 @@ function rawGithubUrl(repositoryUrl: string, ref: string, path: string) {
   if (!match) throw new Error("repository_url_not_allowed");
   return `https://raw.githubusercontent.com/${match[1]}/${match[2]}/${encodeURIComponent(ref).replace(/%2F/g, "/")}/${path.split("/").map(encodeURIComponent).join("/")}`;
 }
+function limitEvidenceText(text: string, maxBytes: number) {
+  const encoder = new TextEncoder();
+  if (encoder.encode(text).length <= maxBytes) return { content: text, original_bytes: encoder.encode(text).length, truncated: false };
+  const marker = "\n[TRUNCATED: repository evidence exceeded the configured context budget]\n";
+  const markerBytes = encoder.encode(marker).length;
+  const available = Math.max(0, maxBytes - markerBytes);
+  const headBudget = Math.floor(available * 0.75);
+  const tailBudget = available - headBudget;
+  const bytes = encoder.encode(text);
+  const head = new TextDecoder().decode(bytes.slice(0, headBudget));
+  const tail = new TextDecoder().decode(bytes.slice(Math.max(headBudget, bytes.length - tailBudget)));
+  return { content: head + marker + tail, original_bytes: bytes.length, truncated: true };
+}
+
 async function loadEvidence(repositoryUrl: string, ref: string, path: string, maxBytes: number) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
@@ -52,8 +70,7 @@ async function loadEvidence(repositoryUrl: string, ref: string, path: string, ma
     const response = await fetch(rawGithubUrl(repositoryUrl, ref, path), { method: "GET", signal: controller.signal, headers: { accept: "text/plain" } });
     if (!response.ok) throw new Error("evidence_fetch_failed_" + response.status);
     const text = await response.text();
-    if (new TextEncoder().encode(text).length > maxBytes) throw new Error("evidence_file_too_large");
-    return text;
+    return limitEvidenceText(text, maxBytes);
   } finally { clearTimeout(timeout); }
 }
 
@@ -117,10 +134,23 @@ Deno.serve(async (req: Request) => {
   if (repositoryAccess && (repositoryAccess.provider !== "github" || !isAllowedRepositoryUrl(repositoryAccess.repository_url))) return json({ ok: false, error: "repository_access_invalid" }, 500);
   const allowedPaths = Array.isArray(repositoryAccess?.allowed_paths) ? repositoryAccess.allowed_paths.map(String) : [];
   const evidencePaths = (Array.isArray(repositoryAccess?.default_evidence_paths) ? repositoryAccess.default_evidence_paths.map(String) : []).filter((p) => isAllowedEvidencePath(p, allowedPaths)).slice(0, Number(repositoryAccess?.max_files || 12));
-  const evidence = [];
+  const evidence: Array<Record<string, unknown>> = [];
+  let evidenceBytes = 0;
   if (repositoryAccess) for (const path of evidencePaths) {
-    try { const content = await loadEvidence(repositoryAccess.repository_url, repositoryAccess.ref, path, Number(repositoryAccess.max_bytes_per_file || 200000)); evidence.push({ source: "github", repository: repositoryAccess.repository_url, ref: repositoryAccess.ref, path, content }); }
-    catch (error) { evidence.push({ source: "github", repository: repositoryAccess.repository_url, ref: repositoryAccess.ref, path, error: error instanceof Error ? error.message : "evidence_fetch_failed" }); }
+    const remainingBytes = maxEvidenceTotalBytes - evidenceBytes;
+    if (remainingBytes < 2000) {
+      evidence.push({ source: "github", repository: repositoryAccess.repository_url, ref: repositoryAccess.ref, path, omitted: true, reason: "aggregate_evidence_budget_reached" });
+      continue;
+    }
+    try {
+      const configuredFileLimit = Number(repositoryAccess.max_bytes_per_file || maxEvidenceFileBytes);
+      const perFileLimit = Math.min(maxEvidenceFileBytes, Math.max(2000, configuredFileLimit), remainingBytes);
+      const loaded = await loadEvidence(repositoryAccess.repository_url, repositoryAccess.ref, path, perFileLimit);
+      evidenceBytes += new TextEncoder().encode(loaded.content).length;
+      evidence.push({ source: "github", repository: repositoryAccess.repository_url, ref: repositoryAccess.ref, path, content: loaded.content, original_bytes: loaded.original_bytes, truncated: loaded.truncated });
+    } catch (error) {
+      evidence.push({ source: "github", repository: repositoryAccess.repository_url, ref: repositoryAccess.ref, path, error: error instanceof Error ? error.message : "evidence_fetch_failed" });
+    }
   }
 
   const { data: participants, error: participantsError } = await supabase
@@ -153,7 +183,7 @@ Deno.serve(async (req: Request) => {
       task_id: task.id,
       event_type: "expert_context_build_failed",
       actor_type: "coordinator",
-      payload: { runtime: "expert_worker_v1.4" },
+      payload: { runtime: "expert_worker_v2.0", evidence_file_count: evidence.length, evidence_bytes: evidenceBytes, max_evidence_total_bytes: maxEvidenceTotalBytes },
     });
     return json({ ok: false, error: "expert_instructions_unavailable" }, 502);
   }
@@ -190,7 +220,8 @@ Deno.serve(async (req: Request) => {
         attempt,
         status: "queued",
         input: {
-          context_version: "1.4",
+          context_version: "1.5",
+          context_metrics: { evidence_file_count: evidence.length, evidence_bytes: evidenceBytes, max_evidence_total_bytes: maxEvidenceTotalBytes, max_evidence_file_bytes: maxEvidenceFileBytes },
           context: {
             platform: { key: "ai-sistem", name: "Ai-Sistem" },
             project: {
@@ -236,7 +267,7 @@ Deno.serve(async (req: Request) => {
     event_type: "expert_consultations_queued",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1.4",
+      runtime: "expert_worker_v2.0",
       consultants: agents.map((agent) => agent.key),
       queued_count: createdRuns.length,
     },
@@ -254,15 +285,22 @@ Deno.serve(async (req: Request) => {
 
   const dispatchResults = await Promise.all(createdRuns.map((run) => dispatchRun(run.id)));
   const failedDispatches = dispatchResults.filter((result) => !result.ok);
+  let contextBudgetExceeded = false;
+  if (failedDispatches.length > 0) {
+    const failedRunIds = failedDispatches.map((result) => result.runId);
+    const { data: failedRuns } = await supabase.from("agent_runs").select("id,error").in("id", failedRunIds);
+    contextBudgetExceeded = (failedRuns ?? []).some((run) => String(run.error || "").startsWith("context_budget_exceeded"));
+  }
 
   await supabase.from("task_events").insert({
     task_id: task.id,
     event_type: "expert_consultations_dispatched",
     actor_type: "coordinator",
     payload: {
-      runtime: "expert_worker_v1.9",
+      runtime: "expert_worker_v2.0",
       dispatched_count: dispatchResults.length - failedDispatches.length,
       failed_count: failedDispatches.length,
+      context_budget_exceeded: contextBudgetExceeded,
       results: dispatchResults.map((result) => ({
         run_id: result.runId,
         ok: result.ok,
@@ -273,13 +311,13 @@ Deno.serve(async (req: Request) => {
 
   if (failedDispatches.length > 0) {
     const retryCount = Number(task.retry_count || 0) + 1;
-    const exhausted = retryCount >= Number(task.max_attempts || 3);
+    const exhausted = contextBudgetExceeded || retryCount >= Number(task.max_attempts || 3);
     await supabase.from("tasks").update({
       status: exhausted ? "failed" : "retryable",
       retry_count: retryCount,
-      failure_class: "retryable",
+      failure_class: contextBudgetExceeded ? "permanent" : "retryable",
       next_retry_at: exhausted ? null : new Date(Date.now() + 30000).toISOString(),
-      last_error: "expert_dispatch_failed",
+      last_error: contextBudgetExceeded ? "provider_context_budget_exceeded" : "expert_dispatch_failed",
       updated_at: new Date().toISOString(),
     }).eq("id", task.id);
 
@@ -287,6 +325,7 @@ Deno.serve(async (req: Request) => {
       ok: false,
       task_id: task.id,
       status: exhausted ? "failed" : "retryable",
+      context_budget_exceeded: contextBudgetExceeded,
       queued_runs: createdRuns.length,
       dispatched_runs: dispatchResults.length - failedDispatches.length,
       failed_dispatches: failedDispatches.length,
