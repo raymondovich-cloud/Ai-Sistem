@@ -412,23 +412,26 @@ Deno.serve(async (req: Request) => {
     const retryAfterSeconds = retryMatch ? Number(retryMatch[1]) : null;
     const isRateLimit = providerError.includes("provider_http_429") &&
       (providerError.includes("rate_limit_exceeded") || providerError.includes("rate_limit"));
+    const contextBudgetExceeded = providerError.startsWith("context_budget_exceeded");
     const longProviderWait = retryAfterSeconds !== null && retryAfterSeconds > 3600;
     const boundedDelay = retryAfterSeconds !== null
       ? Math.max(30, Math.min(retryAfterSeconds, 604800))
       : 300;
     await markFinalizationFailed(task.id, finalization.claim_token);
     await db.from("tasks").update({
-      status: isRateLimit && longProviderWait ? "failed" : "retryable",
-      failure_class: isRateLimit && longProviderWait ? "permanent" : "retryable",
-      next_retry_at: isRateLimit && longProviderWait ? null : new Date(Date.now() + boundedDelay * 1000).toISOString(),
-      last_error: isRateLimit
-        ? "provider_rate_limit_" + (longProviderWait ? "blocked_" : "wait_") + boundedDelay + "s"
-        : "final_provider_failed",
+      status: contextBudgetExceeded || (isRateLimit && longProviderWait) ? "failed" : "retryable",
+      failure_class: contextBudgetExceeded || (isRateLimit && longProviderWait) ? "permanent" : "retryable",
+      next_retry_at: contextBudgetExceeded || (isRateLimit && longProviderWait) ? null : new Date(Date.now() + boundedDelay * 1000).toISOString(),
+      last_error: contextBudgetExceeded
+        ? "provider_context_budget_exceeded"
+        : (isRateLimit
+          ? "provider_rate_limit_" + (longProviderWait ? "blocked_" : "wait_") + boundedDelay + "s"
+          : "final_provider_failed"),
       updated_at: new Date().toISOString(),
     }).eq("id", task.id);
     await db.from("task_events").insert({
       task_id: task.id,
-      event_type: "provider_rate_limit_scheduled",
+      event_type: contextBudgetExceeded ? "provider_context_budget_exceeded" : "provider_rate_limit_scheduled",
       actor_type: "coordinator",
       actor_id: coordinator.id,
       payload: {
@@ -438,13 +441,16 @@ Deno.serve(async (req: Request) => {
         scheduled_delay_seconds: boundedDelay,
         long_provider_wait: longProviderWait,
         rate_limit: isRateLimit,
+        context_budget_exceeded: contextBudgetExceeded,
       },
     });
     return json({
       ok: false,
-      error: isRateLimit && longProviderWait
-        ? "provider_rate_limit_blocked"
-        : (isRateLimit ? "provider_rate_limit_scheduled" : "final_provider_failed"),
+      error: contextBudgetExceeded
+        ? "context_budget_exceeded"
+        : (isRateLimit && longProviderWait
+          ? "provider_rate_limit_blocked"
+          : (isRateLimit ? "provider_rate_limit_scheduled" : "final_provider_failed")),
       retry_after_seconds: retryAfterSeconds,
     }, 502);
   }
