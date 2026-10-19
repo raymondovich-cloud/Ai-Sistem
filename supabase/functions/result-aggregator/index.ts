@@ -1,4 +1,4 @@
-// version 2.2
+// version 2.3
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -182,6 +182,71 @@ Deno.serve(async (req: Request) => {
   if (taskError || !task) return json({ ok: false, error: "task_not_found" }, 404);
 
   if (task.status === "completed") return json({ ok: true, skipped: true, status: "completed" });
+
+  // Permanent context-budget failures need a user-facing Telegram notification.
+  // This path is idempotent and does not change the task's failed status.
+  if (task.status === "failed" && task.last_error === "provider_context_budget_exceeded") {
+    const finalization = await claimFinalization(task.id, true);
+    if (!finalization) return json({ ok: true, skipped: true, status: "finalization_in_progress" });
+
+    const { data: existingNotice } = await db
+      .from("task_events")
+      .select("id")
+      .eq("task_id", task.id)
+      .eq("event_type", "task_failure_notified")
+      .limit(1);
+
+    if ((existingNotice ?? []).length > 0) {
+      await markFinalizationSent(task.id, finalization.claim_token);
+      return json({ ok: true, skipped: true, status: "failure_already_notified" });
+    }
+
+    const { data: telegramUpdate } = await db
+      .from("telegram_updates")
+      .select("chat_id")
+      .eq("task_id", task.id)
+      .order("received_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!telegramUpdate?.chat_id) {
+      await markFinalizationFailed(task.id, finalization.claim_token);
+      return json({ ok: false, error: "telegram_chat_id_missing" }, 500);
+    }
+
+    try {
+      const notice = "Не удалось обработать запрос: объём контекста превысил установленный лимит. Попробуйте уточнить задачу или разбить её на несколько сообщений.";
+      const delivery = await sendTelegram(String(telegramUpdate.chat_id), notice);
+      const { error: eventError } = await db.from("task_events").insert({
+        task_id: task.id,
+        event_type: "task_failure_notified",
+        actor_type: "coordinator",
+        payload: {
+          runtime: "result_aggregator_v2.3",
+          reason: "provider_context_budget_exceeded",
+          telegram_message_ids: delivery.messageIds,
+          telegram_api_confirmed: true,
+        },
+      });
+      if (eventError) throw new Error("failure_notice_event_write_failed");
+      await markFinalizationSent(task.id, finalization.claim_token);
+      return json({ ok: true, task_id: task.id, status: "failed", user_notified: true });
+    } catch (error) {
+      await markFinalizationFailed(task.id, finalization.claim_token);
+      await db.from("task_events").insert({
+        task_id: task.id,
+        event_type: "task_failure_notification_failed",
+        actor_type: "coordinator",
+        payload: {
+          runtime: "result_aggregator_v2.3",
+          reason: "provider_context_budget_exceeded",
+          error: error instanceof Error ? error.message.slice(0, 300) : "telegram_notification_failed",
+        },
+      });
+      return json({ ok: false, error: "failure_notification_failed" }, 502);
+    }
+  }
+
   if (!["synthesizing", "retryable"].includes(task.status)) return json({ ok: true, skipped: true, status: task.status });
 
   const finalization = await claimFinalization(task.id, task.status === "synthesizing" || task.status === "retryable");
