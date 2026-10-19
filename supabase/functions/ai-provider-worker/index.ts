@@ -1,4 +1,4 @@
-// version 1.8
+// version 1.9
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -8,7 +8,27 @@ const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const apiKey = Deno.env.get("OPENAI_API_KEY");
 const model = Deno.env.get("OPENAI_MODEL") || "gpt-6-luna";
 const base = Deno.env.get("OPENAI_BASE_URL") || "https://api.openai.com/v1";
+const maxInputBytes = Math.max(8000, Number(Deno.env.get("AI_PROVIDER_MAX_INPUT_BYTES") || 48000));
 const db = createClient(url, serviceRole, { auth: { persistSession: false } });
+
+function getUsage(data: any) {
+  const usage = data?.usage;
+  if (!usage || typeof usage !== "object") return null;
+  const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
+  return {
+    input_tokens: numeric(usage.input_tokens),
+    output_tokens: numeric(usage.output_tokens),
+    total_tokens: numeric(usage.total_tokens),
+    cached_input_tokens: numeric(usage.input_tokens_details?.cached_tokens),
+    reasoning_output_tokens: numeric(usage.output_tokens_details?.reasoning_tokens),
+    source: "provider_response.usage",
+  };
+}
+
+function roughTokenEstimate(byteLength: number) {
+  // Conservative planning heuristic only; this is not provider-reported usage.
+  return Math.ceil(byteLength / 3);
+}
 const json = (x: unknown, s = 200) =>
   new Response(JSON.stringify(x), { status: s, headers: { "content-type": "application/json" } });
 
@@ -121,7 +141,14 @@ Deno.serve(async (req) => {
       "\n\nYour output must be valid JSON and must not contain markdown fences.";
   }
 
+  const payloadBytes = new TextEncoder().encode(instructions + "\\n" + input).length;
+  const estimatedInputTokens = roughTokenEstimate(payloadBytes);
+  const providerStartedAt = Date.now();
+
   try {
+    if (payloadBytes > maxInputBytes) {
+      throw new Error(`context_budget_exceeded|input_bytes=${payloadBytes}|max_input_bytes=${maxInputBytes}|estimated_input_tokens=${estimatedInputTokens}`);
+    }
     const response = await fetch(base + "/responses", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
@@ -152,6 +179,8 @@ Deno.serve(async (req) => {
     const data = JSON.parse(raw);
     const text = extractResponseText(data);
     if (!text) throw new Error("provider_empty_output");
+    const usage = getUsage(data);
+    const durationMs = Date.now() - providerStartedAt;
 
     const timestamp = new Date().toISOString();
     await db.from("agent_runs").update({
@@ -162,6 +191,14 @@ Deno.serve(async (req) => {
         provider: "openai",
         model,
         response_id: data.id || null,
+        token_usage: usage,
+        context_metrics: {
+          input_bytes: payloadBytes,
+          estimated_input_tokens: estimatedInputTokens,
+          estimate_method: "utf8_bytes_divided_by_3_heuristic",
+          max_input_bytes: maxInputBytes,
+          duration_ms: durationMs,
+        },
       },
       completed_at: timestamp, updated_at: timestamp, error: null,
     }).eq("id", run.id);
@@ -178,6 +215,14 @@ Deno.serve(async (req) => {
         model,
         mode,
         structured_output: mode === "expert" ? Boolean(parseStructuredExpertResult(text)) : false,
+        token_usage: usage,
+        context_metrics: {
+          input_bytes: payloadBytes,
+          estimated_input_tokens: estimatedInputTokens,
+          estimate_method: "utf8_bytes_divided_by_3_heuristic",
+          max_input_bytes: maxInputBytes,
+          duration_ms: durationMs,
+        },
       },
     });
 
@@ -185,12 +230,31 @@ Deno.serve(async (req) => {
   } catch (error) {
     const timestamp = new Date().toISOString();
     const message = error instanceof Error ? error.message : "provider_error";
+    const durationMs = Date.now() - providerStartedAt;
+    const contextBudgetExceeded = message.startsWith("context_budget_exceeded");
     await db.from("agent_runs").update({
       status: "failed", error: message, completed_at: timestamp, updated_at: timestamp,
     }).eq("id", run.id);
     await db.from("task_events").insert({
-      task_id: run.task_id, event_type: "expert_consultation_failed", actor_type: "agent",
-      actor_id: run.agent_id, payload: { run_id: run.id, error: message, mode },
+      task_id: run.task_id,
+      event_type: contextBudgetExceeded ? "provider_context_budget_exceeded" : "expert_consultation_failed",
+      actor_type: "agent",
+      actor_id: run.agent_id,
+      payload: {
+        run_id: run.id,
+        error: message.slice(0, 1000),
+        mode,
+        provider: "openai",
+        model,
+        context_metrics: {
+          input_bytes: payloadBytes,
+          estimated_input_tokens: estimatedInputTokens,
+          estimate_method: "utf8_bytes_divided_by_3_heuristic",
+          max_input_bytes: maxInputBytes,
+          duration_ms: durationMs,
+          provider_called: !contextBudgetExceeded,
+        },
+      },
     });
     return json({ ok: false, error: "provider_execution_failed" }, 502);
   }
